@@ -1,0 +1,19 @@
+---
+title: "Testing twitter data"
+author: "Jamie Afflerbach"
+date: "7/16/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#install.packages("rtweet")
+library(tidyverse)
+library(rtweet)
+```
+
+```{r}
+hrc <- search_tweets(q = "hillaryclinton", n = 1000)
+```
+
