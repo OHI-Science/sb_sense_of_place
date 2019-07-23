@@ -25,13 +25,13 @@ Request number of tweets from Santa Barbara
 This API will not let us get anything previous to the last 9 days...
 ```{r}
 
-## search for 18,000 tweets sent from santa barbara
+## search for 100,000 tweets sent from santa barbara. This takes 
 sb_tweets <- search_tweets(
     geocode = "34.424052,-119.702025,10mi", #within 10 miles of Santa Barbara Courthouse
     include_rts = FALSE, #don't include retweets
     `-filter` = "replies", #don't include replies
     retryonratelimit=TRUE, #re-query after 15 minutes
-    n = 18000
+    n = 100000
 )
 
 ## create lat/lng variables using all available tweet and profile geo-location data
@@ -45,9 +45,9 @@ maps::map("county", "california,santa barbara", lwd = .25)
 with(rt, points(lng, lat, pch = 20, cex = .75, col = rgb(0, .3, .7, .75)))
 ```
 
-Get location of tweeters
+Seems like most we can get with this geotag radius is ~50k from the past 9 days, and only 750 have geotagged info. If this holds true we could expect to get around 30,400 per year or 121,500 geotagged tweets over 4 years. 
 
-
+Clean up data
 
 ```{r}
 # create new df with just the tweet texts & usernames
@@ -66,10 +66,13 @@ If location is equal to either place_name or place_full_name, not a tourist
 tweet_df <- tweet_data %>%
   mutate(user_type = case_when(
     location %in% c(place_name, place_full_name) ~ "local",
+    str_detect(location, "Santa Barbara") ~ "local",
     TRUE ~ "tourist"
   ))
 
-nrow(tweet_df) #number of tweets out of 18,000 that actually have geotag info 
+nrow(tweet_df) #number of tweets that actually have geotag info 
+
+write_csv(tweet_df, "~/github/sb_sense_of_place/data/geotag_sb_tweets.csv")
 ```
 
 Static map
@@ -85,7 +88,7 @@ tweets_sf <- st_as_sf(tweet_df, coords = c("lon", "lat"),
 ggmap(mmap) +
     geom_sf(data = tweets_sf, 
             aes(color = user_type),
-            show.legend = "point", inherit.aes = FALSE) +
+            show.legend = "point", inherit.aes = FALSE, size = 0.8) +
     coord_sf(datum = NA) +
     theme_minimal()
 
@@ -106,5 +109,18 @@ site_locations <- leaflet(tweet_df) %>%
                    color = ~typeCol(user_type), fillOpacity = 1)
 
 site_locations
+```
+
+Tourist to local ratio
+
+```{r}
+l_to_t <- tweet_df %>%
+  group_by(user_type) %>%
+  tally() %>%
+  spread(key = user_type, value = n) %>%
+  mutate(ratio = local/tourist) %>%
+  .$ratio
+
+l_to_t
 ```
 
