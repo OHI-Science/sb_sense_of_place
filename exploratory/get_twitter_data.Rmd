@@ -110,6 +110,12 @@ site_locations <- leaflet(tweet_df) %>%
 
 site_locations
 ```
+Save widget
+
+```{r}
+htmlwidgets::saveWidget(site_locations, file="sb_twitter_map.html")
+```
+
 
 Tourist to local ratio
 
