@@ -35,3 +35,18 @@ vignettes/*.pdf
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
 .Rproj.user
+
+# json
+*.jsonl
+
+#excel
+*.xlsx
+
+#text file
+*.txt
+
+#twarc
+*.log
+
+#annoying files
+*.DS_Store

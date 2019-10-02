@@ -1,0 +1,206 @@
+---
+title: "Twitter data from Crimson Hexagon"
+author: "Jamie Afflerbach"
+date: "10/1/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(jsonlite)
+library(ggmap)
+library(sf)
+library(readxl)
+```
+
+Crimson Hexagon data is saved in two day bulk exports. The CH website only allows exports of 10,000 randomly selected tweets. There seemed to be between 10-15k over any 2 day period so data was exported in weekly chunks to try and get as much data as possible. Two filters were applied to the data before downloading - the location was set to Santa Barbara (this does not mean the tweet was geotagged but that it came from the area) and that it was an Original Tweet (not a retweet).
+
+
+
+```{r}
+# list all .xlsx files
+xl_files <- list.files("../data/weekly", pattern = ".xlsx", full.names = TRUE)
+
+ids <- data.frame()
+
+for(i in 1:length(xl_files)){
+  #get twitter IDs from the Crimson Hexagon output
+ch_data <- read_excel(xl_files[i], skip = 1) %>%
+  select(GUID)
+  
+ids <- rbind(ch_data, ids)
+}
+
+nums <- seq(1, 2080000, length.out = 10)
+
+for(i in 1:9){
+  
+  n <- nums[i]
+  n2 <- nums[i+1]
+  df <- ids[n:n2,]
+  
+#save as .txt file to be read by the python twarc library
+write.table(as.numeric(df$GUID), file = paste0("../data/twitter_ids_", i, ".txt"), sep = "\t",
+            row.names = FALSE, col.names = FALSE)
+}
+```
+
+Now I use the python library, `twarc` in my terminal to "hydrate" the data using the tweet IDs. The Crimson Hexagon data does not give us much information but the `twarc` library lets us use the twitter id to grab a lot more information (including coordinates for geotagged tweets).
+
+Once this is done, all tweets are saved in a JSON file.
+
+```{r}
+# Give the input file name to the function.
+tweets1 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets1.jsonl")) 
+
+tweets2 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets2.jsonl")) 
+
+tweets3 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets3.jsonl")) 
+
+tweets4 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets4.jsonl")) 
+
+tweets5 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets5.jsonl")) 
+
+tweets6 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets6.jsonl")) 
+
+tweets7 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets7.jsonl")) 
+
+tweets8 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets8.jsonl")) 
+
+tweets9 <- stream_in(file("/Users/jamieafflerbach/github/sb_sense_of_place/data/tweets9.jsonl")) 
+```
+
+```{r}
+create_tweet_df <- function(tweets){
+  
+#get the columns we want from the json (some are nested)
+tweet_df <- as.data.frame(cbind(tweets$created_at,
+tweets$id_str,
+tweets$full_text,
+tweets$user$id_str,
+tweets$user$location,
+tweets$geo$type,
+tweets$geo$coordinates,
+tweets$lang,
+tweets$retweet_count,
+tweets$favorite_count))
+
+#assign column names
+names(tweet_df) <- c("created_at","tweet_id","full_text","user_id","user_location",
+              "geo_type", "geo_coordinates", "language", "retweet_count", "favorite_count")
+
+## filter
+tweets_geo <- tweet_df %>%
+  filter(!is.na(geo_type))
+
+return(tweets_geo)
+}
+```
+
+Apply function
+
+```{r}
+df1 <- create_tweet_df(tweets1)
+df2 <- create_tweet_df(tweets2)
+df3 <- create_tweet_df(tweets3)
+df4 <- create_tweet_df(tweets4)
+df5 <- create_tweet_df(tweets5)
+df6 <- create_tweet_df(tweets6)
+df7 <- create_tweet_df(tweets7)
+df8 <- create_tweet_df(tweets8)
+df9 <- create_tweet_df(tweets9)
+```
+
+Combine
+```{r}
+all_df <- bind_rows(df1, df2) %>%
+  bind_rows(df3) %>%
+  bind_rows(df4) %>%
+  bind_rows(df5) %>%
+  bind_rows(df6) %>%
+  bind_rows(df7) %>%
+  bind_rows(df8) %>%
+  bind_rows(df9)
+```
+
+
+
+# Map tweets
+
+Remove points outside of our bounding box, which is c(-119.9,34.38,-119.5,34.48)
+
+```{r}
+# create new df with just the tweet texts & usernames
+tweet_data <- all_df %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>%
+   filter(lat >=33.88 & lat <= 34.6,
+          lon <= -119.5 & lon >= -120.5)
+```
+
+Now we have `r nrow(tweet_data)`.
+
+## Identify tourists
+
+If location is equal to either place_name or place_full_name, not a tourist
+```{r}
+tweet_df <- tweet_data %>%
+  mutate(location  = tolower(user_location), #make all locations lowercase to help with identifying locals
+         user_type = case_when(
+            str_detect(location, paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito"), collapse = '|')) ~ "local",
+            TRUE ~ "tourist")) %>%
+  mutate(id = 1:nrow(.)) %>%
+  group_by(id) %>%
+  mutate(created_at = paste(created_at),
+         tweet_id   = paste(tweet_id),
+         full_text = paste(full_text),
+         user_id = paste(user_id),
+         user_location = paste(user_location),
+         geo_type = paste(geo_type),
+         geo_coordinates = paste(geo_coordinates),
+         language = paste(language),
+         retweet_count = paste(retweet_count),
+         favorite_count = paste(favorite_count)) %>%
+  ungroup()
+
+write_csv(tweet_df, "~/github/sb_sense_of_place/data/geotag_sb_tweets.csv")
+```
+
+Static map
+
+```{r}
+#get basemap
+mmap <- get_map(location = c(-120.5,33.88,-119.5,34.6), source = "osm")
+
+#turn data into sf object
+tweets_sf <- st_as_sf(tweet_df, coords = c("lon", "lat"), 
+                 crs = 4326)
+
+ggmap(mmap) +
+    geom_sf(data = tweets_sf, 
+            aes(color = user_type),
+            show.legend = "point", inherit.aes = FALSE, size = 0.8) +
+    coord_sf(datum = NA) +
+    theme_minimal()
+
+```
+
+Interactive map
+
+```{r}
+library(leaflet)
+typeCol <- colorFactor(c("navy", "red"), domain = c("local", "tourist"))
+
+# plot points on top of a leaflet basemap
+
+site_locations <- leaflet(tweet_df) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(lng = ~lon, lat = ~lat, popup = ~full_text,
+                   radius = 3, stroke = FALSE,
+                   color = ~typeCol(user_type), fillOpacity = 1)
+
+site_locations
+```
+

@@ -1,0 +1,86 @@
+---
+title: "Applying the dictionary"
+author: "Jamie Afflerbach"
+date: "9/25/2019"
+output: html_document
+---
+
+This script takes the geotagged twitter data and applies the dictionary to the tweets to identify whether or not each tweet is considered "nature-based".
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(leaflet)
+```
+
+Load data
+```{r}
+data       <- read_csv("../data/geotag_sb_tweets.csv")
+dictionary <- read_csv("../data/dictionary.csv")
+```
+
+Create a function to apply to each tweet that identifies whether there is a word in it or not. Since all dictionary words are lower case, we also turn the full_text column lowercase.
+
+```{r}
+nature_df <- data %>%
+  mutate(full_text = tolower(full_text)) %>%
+  mutate(nature_word = ifelse(
+    str_detect(full_text, paste(c(dictionary$word),collapse = '|')) == TRUE, 1, 0
+  ))
+```
+
+Map of nature based vs non nature based tweets
+
+```{r}
+typeCol <- colorFactor(c("brown","darkgreen"), domain = c(0, 1))
+
+# plot points on top of a leaflet basemap
+
+site_locations <- leaflet(nature_df) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(lng = ~lon, lat = ~lat, popup = ~full_text,
+                   radius = 3, stroke = FALSE,
+                   color = ~typeCol(nature_word), fillOpacity = 1)
+
+site_locations
+```
+
+Remove non nature based
+
+```{r}
+
+# plot points on top of a leaflet basemap
+
+site_locations <- leaflet(nature_df %>% filter(nature_word == 1)) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(lng = ~lon, lat = ~lat, popup = ~full_text,
+                   radius = 3, stroke = FALSE,
+                   color = ~typeCol(nature_word), fillOpacity = 1)
+
+site_locations
+```
+
+
+Add another column that combines nature_word and tourist vs local. 
+- local without a nature_based word = 1
+- tourist without a nature_based word = 2
+- tourist with a nature_based word = 3
+- local with a nature_based word = 4
+
+```{r}
+nature_type_df <- nature_df %>%
+  mutate(nature_type = case_when(
+    user_type == "local" & nature_word == 0 ~ 1,
+    user_type == "tourist" & nature_word == 0 ~ 2,
+    user_type == "tourist" & nature_word == 1 ~ 3,
+    user_type == "local" & nature_word == 1 ~ 4
+  ))
+```
+
+Let's look at histogram
+```{r}
+hist(nature_type_df$nature_type)
+```
+
+Looks like most tweets are from tourists and are not nature based.
