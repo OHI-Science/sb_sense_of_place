@@ -59,6 +59,8 @@ site_locations <- leaflet(nature_df %>% filter(nature_word == 1)) %>%
                    color = ~typeCol(nature_word), fillOpacity = 1)
 
 site_locations
+library(htmlwidgets)
+saveWidget(site_locations, file="sop_based_tweets.html")
 ```
 
 
