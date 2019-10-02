@@ -24,7 +24,7 @@ paddle
 swim
 ocean
 beach
-sea
+^sea
 sand
 coast
 island
@@ -54,12 +54,12 @@ sunrise
 climate
 park
 wildlife
-view
+^view
 habitat
 ^rock
 nature
 mountains
-peak
+^peak
 canyon
 pier
 wharf
