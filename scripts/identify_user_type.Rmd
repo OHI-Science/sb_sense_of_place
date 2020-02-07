@@ -1,0 +1,151 @@
+---
+title: "Identify tourists and locals"
+author: "Jamie Montgomery"
+date: "2/6/2020"
+output: html_document
+---
+
+```{r setup, message = F, warning = F}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+
+library(tidyverse)
+#devtools::install_github("ramnathv/tidymetrics")
+library(tidymetrics) # i use the cross_by_periods
+```
+
+## Identify tourists
+
+If location is equal to either `place_name` or `place_full_name`, not a tourist
+```{r}
+tweet_df <- tweet_data %>%
+  mutate(location  = tolower(user_location), #make all locations lowercase to help with identifying locals
+         user_type = case_when(
+            str_detect(location, paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito", "805", "gaviota", "ucsb"), collapse = '|')) ~ "local",
+            TRUE ~ "tourist")) %>%
+  mutate(id = 1:nrow(.)) %>%
+  group_by(id) %>%
+  mutate(created_at = paste(created_at),
+         tweet_id   = as.numeric(paste(tweet_id)),
+         full_text = paste(full_text),
+         user_id = as.numeric(paste(user_id)),
+         user_location = paste(user_location),
+         geo_type = paste(geo_type),
+         geo_coordinates = paste(geo_coordinates),
+         language = paste(language),
+         retweet_count = as.numeric(paste(retweet_count)),
+         favorite_count = as.numeric(paste(favorite_count))) %>%
+  ungroup()
+
+df <- read_csv("../data/geotag_sb_tweets.csv")
+
+tweet_df2 <- bind_rows(df, tweet_df)
+
+write_csv(tweet_df2, "../data/geotag_sb_tweets.csv")
+```
+
+
+Think of another way to identify tourists and locals. Using [Eric Fisher's methods](https://labs.mapbox.com/bites/00245/locals/#5/38.000/-95.000), we identify a local as someone who has tweeted from the Santa Barbara area within a month range. A tourist is less likely to tweet multiple times within a month. Using `tidymetrics::cross_by_periods` we can count the number of tweets per user in a day/week/month.
+
+We have `r nrow(tweet_df)` tweets from `r length(unique(tweet_df$user_id))` people.
+
+```{r}
+tweet_df <- read_csv("../data/geotag_sb_tweets.csv") %>%
+  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
+  mutate(Year = as.numeric(Year)) %>%
+  separate(Day, into = c("Day", "Date"), sep = 4) %>%
+  separate(Date, into = c("Date", "Time"), sep = 7) %>%
+  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
+  select(-Extra, -tweet_id, -language, -geo_type, -Day) %>%
+  separate(Date, into = c("Month", "Day"), sep = " ") %>%
+  mutate(Day = as.numeric(Day)) %>%
+  mutate(month_num = match(Month,month.abb)) %>%
+  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year), tryFormats = "%m/%d/%Y"))
+
+num_month_tweets <- tweet_df %>%
+  group_by(user_id, user_location, Year) %>%
+  summarize(num_unique_months_tweeted = length(unique(month_num))) %>%
+  ungroup() 
+```
+
+What we really want to do is use the number of tweets in a month/year range to tell us whether or not someone is a local or tourist. We can do this across the entire dataset, and then compare to our user location designation to see how right or wrong we were.
+
+Our assumption is that a locals tweets will occur across multiple months within a single year, whereas a tourist is most likely to only tweet within a month (when visiting) or multiple visits across multiple months/years.
+
+First, if folk self-identify as from the Santa Barbara area in their user location, we assign them locals, otherwise unknown.
+
+Then we take the unknowns and apply a couple rules.
+1. if they have tweeted in more than 2 months within the same year they are local
+2. if they have only tweeted in 1 or 2 months within a year they are a tourist
+
+```{r}
+tourist_local <- num_month_tweets %>%
+  group_by(user_id, user_location) %>% 
+  mutate(user_type = case_when(
+    str_detect(tolower(user_location), paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito", "805", "gaviota", "ucsb"), collapse = '|')) ~ "local",
+    TRUE ~ "unknown")) %>%
+  mutate(user_type = case_when(
+    user_type == "unknown" & num_unique_months_tweeted > 2 ~ "local", #if someone has tweeted in at least 6 months of a single year we will id them as local
+    user_type == "unknown" & num_unique_months_tweeted <= 2 ~ "tourist",
+    TRUE ~ as.character(user_type)
+  )) %>%
+  select(-num_unique_months_tweeted, -Year) %>%
+  distinct()
+```
+
+The way we assigned "tourist" or "local" by year gives us some cases where in one year. For those users that were identified as a tourist in one year and a local in another, we will default and call them all local. 
+
+```{r duplicates}
+# show me the duplicates
+dups <- tourist_local$user_id[duplicated(alt_tourist_local$user_id)]
+
+tourist_local_update <- tourist_local %>%
+  mutate(user_type = ifelse(user_id %in% dups, "local", user_type)) %>%
+  distinct()
+```
+
+
+```{r}
+tweet_df_w_user_type <- tweet_df %>%
+  select(-user_type) %>%
+  left_join(tourist_local_update)
+
+```
+There are `r nrow(filter(tweet_df_w_user_type, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_df_w_user_type, user_type == "local"))` tweets from locals.
+-------
+
+Static map
+
+```{r}
+#get basemap
+mmap <- get_map(location = c(-120.5,33.88,-119.5,34.6), source = "osm")
+
+#turn data into sf object
+tweets_sf <- st_as_sf(tweet_df_w_user_type, coords = c("lon", "lat"), 
+                 crs = 4326)
+
+ggmap(mmap) +
+    geom_sf(data = tweets_sf, 
+            aes(color = user_type),
+            show.legend = "point", inherit.aes = FALSE, size = 0.8) +
+    coord_sf(datum = NA) +
+    theme_minimal()
+
+```
+
+
+Interactive map
+
+```{r}
+library(leaflet)
+typeCol <- colorFactor(c("navy", "red"), domain = c("local", "tourist"))
+
+# plot points on top of a leaflet basemap
+ 
+site_locations <- leaflet(tweet_df_w_user_type) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(lng = ~lon, lat = ~lat, popup = ~full_text,
+                   radius = 3, stroke = FALSE,
+                   color = ~typeCol(user_type), fillOpacity = 1)
+
+site_locations
+```

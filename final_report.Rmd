@@ -1,0 +1,103 @@
+---
+title: "Final report"
+author: "Jamie Afflerbach"
+date: "2/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Summary
+
+Project summary
+
+Goals:
+- 
+- 
+- 
+
+Findings:
+
+
+# Data Overview
+
+Twitter data
+
+## Table of data 
+
+## Caveats
+
+Required crimson hexagon access
+
+# Data processing
+
+## Tourists or Locals?
+
+## Nature-based dictionary
+
+# Looking at where people are tweeting from
+
+## General patterns across the city
+
+### Map of all tweets in Santa Barbara across the time period
+
+### Map of locals vs users
+
+### Map of nature based vs non nature based
+
+## Specifically parks and protected areas
+
+### CPAD
+
+# Time
+
+## Timeline of tweets
+
+Initial hypothesis was identifying spikes in nature-based tweets around three significant events:
+- Refugio oil spill in 2015
+- Thomas fire in 2017
+- Debris flow in 2018
+
+# Word clouds
+top 100 words for locals vs tourist. And we could do this in space. At sterns wharf what are people tweeting about? At Elings, what are locals tweeting about?
+
+Maybe in word clouds we can see some changes due to natural events
+
+## All of SB
+
+## By area
+
+# Sentiment Analysis
+
+
+
+# Summary
+
+# Lessons learned
+
+## Data is harder to find
+
+# Future research
+
+## Looking at different scale areas
+
+There might be an interesting comparison between rural-suburban-urban areas. We hypothseize that the tourist/local alignment would split in urban areas, maybe aligned in suburban (like SB) and maybe not exist in rural.
+
+Proportion of words that are nature based tells you how people. In Santa Barbara, there will be a lot of nature-based sense of place. In Manhattan, we wouldn’t expect to see nature based ones so much.
+
+In a blog piece we can pose questions that we couldn’t answer but stuff like “can proportion of tourists/locals in place engagement tell us anything”.
+
+Could compare % nature based tweets in SB to other areas. If we did this across the whole state, what proportion% are nature based? Maybe on average its just 5%.
+
+
+Where and why do locals and tourists overlap in their use of area. SB seems to have a high alignment of tourists/locals, which may be helpful for local policy. Maybe places with distinct differences in how tourists/locals use places. 
+
+Look at cities of different coastal sizes rural - small town - urban - mega city. Could see how tourists/locals patterns differentiate across scale. 
+
+Is there a threshold of tourists where locals don’t go anymore? 
+
+In areas where we see both tourists and locals engaging, what characteristics do we see? 
+
+Quantifying transitions between rural to city. 

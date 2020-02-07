@@ -1,0 +1,75 @@
+---
+title: "Wordclouds"
+author: "Jamie Afflerbach"
+output: html_document
+---
+
+
+```{r setup, include=FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+library(RColorBrewer)
+library(tidyverse)
+library(wordcloud)
+library(tm)
+library(qdapRegex)     # Removing URLs
+library(tidytext)
+```
+
+Load data
+
+```{r}
+
+data       <- read_csv("../data/geotag_sb_tweets.csv") %>%
+  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
+  mutate(Year = as.numeric(Year)) %>%
+  separate(Day, into = c("Day", "Date"), sep = 4) %>%
+  separate(Date, into = c("Date", "Time"), sep = 7) %>%
+  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
+  select(-Extra, -tweet_id, -language, -geo_type, -id, -geo_coordinates, -location, -user_id, -Day) %>%
+  separate(Date, into = c("Month", "Day"), sep = " ") %>%
+  mutate(Day = as.numeric(Day)) %>%
+  mutate(month_num = match(Month,month.abb)) %>%
+  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year),tryFormats = "%m/%d/%Y"))
+```
+
+```{r}
+tweets <- data %>%
+  select(Month, Day, Year, full_text, date, lat, lon)
+```
+
+
+```{r}
+tweets$tweets_cleaned_text <- gsub("https\\S*", "", tweets$full_text) 
+tweets$tweets_cleaned_text <- gsub("\n", " ", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("://t.co*", "", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("@\\S*", "", tweets$tweets_cleaned_text) 
+tweets$tweets_cleaned_text <- gsub("amp", "", tweets$tweets_cleaned_text) 
+tweets$tweets_cleaned_text <- gsub("[\r\n]", "", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("[[:punct:]]", "", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("https?", "", tweets$tweets_cleaned_text)
+
+
+tweets_words <-  tweets %>%
+ select(tweets_cleaned_text) %>%
+ unnest_tokens(word, tweets_cleaned_text) %>%
+ anti_join(get_stopwords()) #remove stop words
+
+
+unwanted_words <- c("im", "just", "like", "get")
+
+words <- tweets_words %>% count(word, sort=TRUE) %>%
+  filter(!word %in% unwanted_words) #remove unwanted words
+```
+
+Wordcloud
+
+```{r}
+set.seed(1234) # for reproducibility 
+
+wordcloud(words = words$word, freq = words$n, min.freq = 1,           
+          max.words=80, random.order=FALSE, rot.per=0.35,            
+          colors=brewer.pal(8, "Dark2"))
+```
+
+Do this by areas within Santa Barbara. 
