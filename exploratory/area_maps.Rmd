@@ -1,0 +1,97 @@
+---
+title: "Applying the dictionary"
+author: "Jamie Afflerbach"
+date: "10/16/2019"
+output: html_document
+---
+
+This script takes the geotagged twitter data and applies the dictionary to the tweets to identify whether or not each tweet is considered "nature-based".
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(mapview)
+library(RColorBrewer)
+library(htmlwidgets)
+```
+
+Load data
+```{r}
+data       <- read_csv("../data/tweets_nature_categorized.csv")
+```
+
+Create a function to apply to each tweet that identifies whether there is a word in it or not. Since all dictionary words are lower case, we also turn the full_text column lowercase.
+
+```{r}
+nature_df <- data %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>% 
+    st_as_sf(coords = c("lon", "lat")) %>%
+    st_set_crs("+init=epsg:4326") %>%
+  mutate(tweet_type = ifelse(nature_word == 1, "nature tweet", "non-nature tweet"),
+         nature_user = case_when(
+            user_type == "local" & nature_word == 0 ~ "local, non nature tweet",
+            user_type == "tourist" & nature_word == 0 ~ "tourist, non nature tweet",
+            user_type == "tourist" & nature_word == 1 ~ "tourist, nature tweet",
+            user_type == "local" & nature_word == 1 ~ "local, nature tweet"
+        ))
+```
+
+# Overlap with protected areas
+
+Load california protected areas database
+```{r}
+cpad <- read_sf("../data/CPAD_2019a/CPAD_2019a_Holdings.shp") %>%
+  filter(COUNTY == "Santa Barbara") %>%
+  st_transform("+init=epsg:4326") %>%
+  st_crop(xmin = -119.5, xmax = -120.5, ymin = 33.88, ymax = 34.6)
+```
+
+Count how many points in each polygon (all types of tweets not just nature based)
+
+```{r}
+cpad_nature_count <- cpad %>%
+  mutate(pt_count = lengths(st_intersects(cpad, nature_df))) %>%
+  filter(pt_count > 0)
+
+mapview(cpad_nature_count, col.regions = brewer.pal(6, "YlOrRd"),zcol = "pt_count")
+```
+
+
+# Compare occurrence of nature vs non-nature based tweets
+
+```{r}
+non_nature_tweets <- nature_df %>% 
+  filter(nature_word == 0)
+
+cpad_all_count <- cpad %>%
+  mutate(nature_count = lengths(st_intersects(cpad, nature_df)),
+         non_nature_count = lengths(st_intersects(cpad, non_nature_tweets))) %>%
+  rowwise() %>%
+  mutate(
+         ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
+  st_set_geometry("geometry")
+```
+
+
+
+```{r}
+
+site_locations <- mapview(nature_df, zcol = "tweet_type", col.regions = c("darkgreen", "gray"), layer.name = "Tweet types") + 
+  mapview(nature_df, zcol = "user_type", col.regions = c("purple", "yellow"), layer.name = "User types") +
+  mapview(nature_df %>% filter(nature_user %in% c("tourist, nature tweet", "local, nature tweet")), zcol = "nature_user", col.regions = c("darkgreen", "midnightblue"), layer.name = "User and nature tweets") +
+  mapview(cpad_all_count, zcol = "prop") +
+  mapview(cpad_all_count, zcol = "ratio") 
+  
+#mapshot(site_locations, file="sop_based_tweets.html")
+```
+
+
+
