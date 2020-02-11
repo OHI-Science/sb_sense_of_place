@@ -5,10 +5,14 @@ date: "10/16/2019"
 output: html_document
 ---
 
+# Summary 
+
 This script takes the geotagged twitter data and applies the dictionary to the tweets to identify whether or not each tweet is considered "nature-based".
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+## Setup
+
+```{r setup, include=FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
 library(tidyverse)
 library(leaflet)
@@ -23,7 +27,7 @@ Load data
 data       <- read_csv("../data/tweets_nature_categorized.csv")
 ```
 
-Create a function to apply to each tweet that identifies whether there is a word in it or not. Since all dictionary words are lower case, we also turn the full_text column lowercase.
+Create a function to apply to each tweet that identifies whether there is a word in it or not. Since all dictionary words are lower case, we also turn the `full_text` column lowercase.
 
 ```{r}
 nature_df <- data %>%

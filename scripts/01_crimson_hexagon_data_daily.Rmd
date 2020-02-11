@@ -1,0 +1,331 @@
+---
+title: "Twitter data from Crimson Hexagon"
+author: "Jamie Afflerbach"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(jsonlite)
+library(ggmap)
+library(leaflet)
+library(sf)
+library(readxl)
+library(reticulate)
+```
+
+Crimson Hexagon data is saved in two day bulk exports. The CH website only allows exports of 10,000 randomly selected tweets. There seemed to be between 10-15k over any 2 day period so data was exported in 2-day chunks to try and get as much data as possible. Two filters were applied to the data before downloading - the location was set to Santa Barbara (this does not mean the tweet was geotagged but that it came from the area) and that it was an Original Tweet (not a retweet).
+
+```{r}
+# list all .xlsx files
+xl_files <- list.files("../data/daily", pattern = ".xlsx", full.names = TRUE)
+
+ids <- data.frame()
+
+for(i in 1:length(xl_files)){
+  print(i)
+  #get twitter IDs from the Crimson Hexagon output
+ch_data <- read_excel(xl_files[i], skip = 1) %>%
+  select(GUID)
+  
+ids <- rbind(ch_data, ids)
+}
+
+nums <- seq(1, nrow(ids), length.out = 30)
+
+for(i in 1:29){
+  
+  n <- nums[i]
+  n2 <- nums[i+1]
+  df <- ids[n:n2,]
+  
+#save as .txt file to be read by the python twarc library
+write.table(as.numeric(df$GUID), file = paste0("../data/twitter_ids_", i, ".txt"), sep = "\t",
+            row.names = FALSE, col.names = FALSE)
+}
+```
+
+Now I use the python library, `twarc` in my terminal to "hydrate" the data using the tweet IDs. The Crimson Hexagon data does not give us much information but the `twarc` library lets us use the twitter id to grab a lot more information (including coordinates for geotagged tweets).
+
+Once this is done, all tweets are saved in a JSON file.
+
+```{r}
+# Give the input file name to the function.# 
+
+tweets1 <- stream_in(file("../data/tweets1.jsonl")) 
+tweets2 <- stream_in(file("../data/tweets2.jsonl")) 
+tweets3 <- stream_in(file("../data/tweets3.jsonl")) 
+tweets4 <- stream_in(file("../data/tweets4.jsonl")) 
+tweets5 <- stream_in(file("../data/tweets5.jsonl")) 
+tweets6 <- stream_in(file("../data/tweets6.jsonl")) 
+tweets7 <- stream_in(file("../data/tweets7.jsonl")) 
+tweets8 <- stream_in(file("../data/tweets8.jsonl")) 
+tweets9 <- stream_in(file("../data/tweets9.jsonl")) 
+tweets10 <- stream_in(file("../data/tweets10.jsonl")) 
+tweets11 <- stream_in(file("../data/tweets11.jsonl")) 
+tweets12 <- stream_in(file("../data/tweets12.jsonl")) 
+tweets13 <- stream_in(file("../data/tweets13.jsonl")) 
+tweets14 <- stream_in(file("../data/tweets14.jsonl")) 
+tweets15 <- stream_in(file("../data/tweets15.jsonl")) 
+tweets16 <- stream_in(file("../data/tweets16.jsonl")) 
+tweets17 <- stream_in(file("../data/tweets17.jsonl")) 
+tweets18 <- stream_in(file("../data/tweets18.jsonl")) 
+tweets19 <- stream_in(file("../data/tweets19.jsonl")) 
+tweets20 <- stream_in(file("../data/tweets20.jsonl")) 
+tweets21 <- stream_in(file("../data/tweets21.jsonl")) 
+tweets22 <- stream_in(file("../data/tweets22.jsonl")) 
+tweets23 <- stream_in(file("../data/tweets23.jsonl")) 
+tweets24 <- stream_in(file("../data/tweets24.jsonl")) 
+tweets25 <- stream_in(file("../data/tweets25.jsonl")) 
+tweets26 <- stream_in(file("../data/tweets26.jsonl")) 
+tweets27 <- stream_in(file("../data/tweets27.jsonl")) 
+tweets28 <- stream_in(file("../data/tweets28.jsonl")) 
+tweets29 <- stream_in(file("../data/tweets29.jsonl")) 
+```
+
+```{r}
+create_tweet_df <- function(tweets){
+
+  
+#get the columns we want from the json (some are nested)
+tweet_df <- as_tibble(cbind(
+as.character(tweets$created_at),
+as.numeric(tweets$id_str),
+as.character(tweets$full_text),
+as.numeric(tweets$user$id_str),
+as.character(tweets$user$location),
+as.character(tweets$geo$type),
+as.character(tweets$geo$coordinates),
+as.character(tweets$lang),
+as.numeric(tweets$retweet_count),
+as.numeric(tweets$favorite_count)))
+
+#assign column names
+names(tweet_df) <- c("created_at","tweet_id","full_text","user_id","user_location",
+              "geo_type", "geo_coordinates", "language", "retweet_count", "favorite_count")
+
+## filter
+tweets_geo <- tweet_df %>%
+  filter(!is.na(geo_type)) %>%
+  mutate(tweet_id = as.numeric(tweet_id),
+         user_id = as.numeric(user_id),
+         retweet_count = as.numeric(retweet_count),
+         favorite_count = as.numeric(favorite_count))
+
+return(tweets_geo)
+}
+```
+
+Apply function
+
+```{r}
+df1 <- create_tweet_df(tweets1)
+df2 <- create_tweet_df(tweets2)
+df3 <- create_tweet_df(tweets3)
+df4 <- create_tweet_df(tweets4)
+df5 <- create_tweet_df(tweets5)
+df6 <- create_tweet_df(tweets6)
+df7 <- create_tweet_df(tweets7)
+df8 <- create_tweet_df(tweets8)
+df9 <- create_tweet_df(tweets9)
+df10 <- create_tweet_df(tweets10)
+df11 <- create_tweet_df(tweets11)
+df12 <- create_tweet_df(tweets12)
+df13 <- create_tweet_df(tweets13)
+df14 <- create_tweet_df(tweets14)
+df15 <- create_tweet_df(tweets15)
+df16 <- create_tweet_df(tweets16)
+df17 <- create_tweet_df(tweets17)
+df18 <- create_tweet_df(tweets18)
+df19 <- create_tweet_df(tweets19)
+df20 <- create_tweet_df(tweets20)
+df21 <- create_tweet_df(tweets21)
+df22 <- create_tweet_df(tweets22)
+df23 <- create_tweet_df(tweets23)
+df24 <- create_tweet_df(tweets24)
+df25 <- create_tweet_df(tweets25)
+df26 <- create_tweet_df(tweets26)
+df27 <- create_tweet_df(tweets27)
+df28 <- create_tweet_df(tweets28)
+df29 <- create_tweet_df(tweets29)
+```
+
+Combine
+```{r}
+all_df <- bind_rows(df1, df2, df3, df4, df5, df6, df7, df8, df9, df10, df11, df12, df13, df14,df15, df16, df17, df18, df19, df20, df21, df22, df23, df24, df25, df26, df27, df28, df29) 
+```
+
+# Map tweets
+
+Remove points outside of our bounding box, which is c(-119.9,34.38,-119.5,34.48)
+
+```{r}
+# create new df with just the tweet texts & usernames
+tweet_data <- all_df %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>%
+   filter(lat >=33.88 & lat <= 34.6,
+          lon <= -119.5 & lon >= -120.5)
+
+write_csv(tweet_data, "../data/geotagged_sb_tweets.csv")
+```
+
+Now we have `r nrow(tweet_data)`.
+
+
+## Map of all tweets
+
+Turn the `tweet_df_w_user_type` data frame into a spatial object.
+
+```{r}
+tweet_sf <- tweet_data %>%
+  st_as_sf(coords = c("lon", "lat")) %>%
+  st_set_crs(4326)
+```
+
+
+## Interactive leaflet map
+```{r}
+#map
+map <- leaflet(tweet_data) %>%
+  # Base groups
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  # Overlay groups %>%
+    addCircleMarkers(data = tweet_data, lng = ~lon, lat = ~lat, popup = ~full_text,
+                   radius = 3, stroke = FALSE, fillOpacity = 0.5, clusterOptions = markerClusterOptions())  
+
+map
+```
+
+```{r}
+cols      = c(brewer.pal(9,"OrRd")[2:9])
+
+#santa barbara
+sb.map <- get_map("santa barbara, california", zoom = 14, maptype = "toner-lite") 
+
+ggmap(sb.map,  legend="none") +
+  coord_equal() +
+    labs(x = NULL, y = NULL) +
+    theme(axis.text = element_blank()) +
+    geom_hex(data = tweet_data, aes(x=lon, y=lat, fill = cut(..count.., c(0, 5, 10, 50, 100,
+                                    500, 1000, 2500, Inf))), bins=150) +
+       scale_fill_manual(
+        values = cols,
+        labels = c("<5", "5-9", "10-49 ", "50-99 ",
+                   "100-499 ", "500-999 ", "1000-2499 ", "2500+")
+    ) +
+  labs(fill = "# Tweets",
+       title = "Tweets in Santa Barbara 2015-2019")
+
+```
+
+# Hex map for whole area
+
+## Static map
+
+```{r}
+#santa barbara
+sb.map <- get_map("santa barbara, california", zoom = 11, maptype = "toner-lite") 
+
+ggmap(sb.map,  legend="none") +
+  coord_equal() +
+    labs(x = NULL, y = NULL) +
+    theme(axis.text = element_blank()) +
+    geom_hex(data = tweet_data, aes(x=lon, y=lat, fill = cut(..count.., c(0, 5, 10, 50, 100,
+                                    500, 1000, 2500, Inf))), bins=150) +
+       scale_fill_manual(
+        values = cols,
+        labels = c("<5 ", "5-9", "10-49 ", "50-99 ",
+                   "100-499 ", "500-999 ", "1000-2499 ", "2500+")
+    ) +
+  labs(fill = "# Tweets",
+       title = "Tweets in larger SB area 2015-2019")
+
+```
+
+## Interactive map
+
+```{r, eval = F, echo = F}
+#santa barbara county shapefile
+sb_county <- read_sf("../data/CA_Counties_TIGER2016.shp") %>%
+  filter(NAME == "Santa Barbara") %>%
+  st_transform("+init=epsg:4326") %>%
+  st_crop(xmin = -119.5, xmax = -120.5, ymin = 33.88, ymax = 34.6) %>%
+  as("Spatial")
+
+#get hexagonal grid
+# size <- 0.001
+# hex_points <- sp::spsample(sb_county, type = "hexagonal", cellsize = size)
+# hex_grid <- HexPoints2SpatialPolygons(hex_points, dx = size) %>%
+#   st_as_sf() %>%
+#   st_transform(4326)
+
+#write_sf(hex_grid, "../data/sb_area_hexagons.shp")
+```
+
+Get hex density by overlaying with points
+
+```{r}
+hex_grid <- read_sf("../data/sb_area_hexagons.shp")
+
+hex_tweet_count <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, tweet_sf)))
+
+mapview::mapview(hex_tweet_count %>% filter(tweet_count > 0))
+```
+
+Why are there so many tweets near De La Vina and Arrellaga hospital? Let's take a closer look at tweets by geo_coordinates
+
+```{r}
+geo_tweets <- tweet_data %>%
+  group_by(geo_coordinates) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+head(geo_tweets)
+```
+
+So one coordinate has 11,489 tweets from it. The next highest is just 2019 tweets. 
+
+```{r}
+sb.zoom.map <- get_map(location = c( -119.7158247, 34.4262342), zoom = 17, maptype = "toner-lite")
+
+ggmap(sb.zoom.map,  legend="none") +
+  coord_equal() +
+    labs(x = NULL, y = NULL) +
+    theme(axis.text = element_blank()) +
+    geom_hex(data = tweet_df_w_user_type, bins = 50)
+```
+
+The light blue point is equal to the coordinates c(34.4258, -119.714). I think this is the default coord when someone tags Santa Barbara. First clue is that there is nothing of significance at this location, it is a residential area. Let's take a look at a handful of tweets coming from here.
+
+```{r}
+delavina_tweets <- tweet_df %>%
+  filter(geo_coordinates == "c(34.4258, -119.714)")
+
+kable(sample_n(delavina_tweets, 20)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
+```
+
+Look at the log of tweet count.
+
+```{r}
+
+hex_tweet_count <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, tweet_sf)),
+         log_tweet_count = log(tweet_count),
+         bin = case_when(
+           tweet_count < 10 ~ 10,
+           tweet_count >= 10 & tweet_count < 50 ~ 50,
+           tweet_count >= 50 & tweet_count < 100 ~ 100,
+           tweet_count >= 100 & tweet_count < 500 ~ 500,
+           tweet_count >= 500 & tweet_count < 1000 ~ 1000,
+           tweet_count >= 1000 & tweet_count < 2000 ~ 2000,
+           tweet_count >= 2000 ~ 2001
+         ))
+
+mapview::mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes with no tweets
+                 zcol = "log_tweet_count", layer.name = "Tweet count (log)")
+```

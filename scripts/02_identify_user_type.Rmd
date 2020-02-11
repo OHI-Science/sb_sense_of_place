@@ -5,44 +5,23 @@ date: "2/6/2020"
 output: html_document
 ---
 
+# Summary
+
+This script takes the geotagged tweets and assigns each unique user a **user type**, either as a *local* or a *tourist*. If the user has self-identified their location as somewhere in the Santa Barbara area, they are designated a *local*. This includes Carpinteria, Santa Barbara, Montecito, Goleta, Gaviota and UCSB. For the remainder, we use the number of times they have tweeted from Santa Barbara within a year to designate user type. If someone has tweeted across more than 2 months in the same year from Santa Barbara, they are identified as a local. This is consistent with how [Eric Fischer](https://www.citylab.com/transportation/2015/02/where-do-locals-go-in-major-cities-check-out-this-interactive-world-map/385768/) determined tourists in his work. This is not fool-proof and there are instances were people visit and tweet from Santa Barbara more than two months a year, especially if they are visiting family or live within a couple hours driving distance.
+
+## Setup
+
 ```{r setup, message = F, warning = F}
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
 
 library(tidyverse)
-#devtools::install_github("ramnathv/tidymetrics")
-library(tidymetrics) # i use the cross_by_periods
+library(leaflet)
+library(RColorBrewer)
+library(ggmap)
+library(viridis)
 ```
 
 ## Identify tourists
-
-If location is equal to either `place_name` or `place_full_name`, not a tourist
-```{r}
-tweet_df <- tweet_data %>%
-  mutate(location  = tolower(user_location), #make all locations lowercase to help with identifying locals
-         user_type = case_when(
-            str_detect(location, paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito", "805", "gaviota", "ucsb"), collapse = '|')) ~ "local",
-            TRUE ~ "tourist")) %>%
-  mutate(id = 1:nrow(.)) %>%
-  group_by(id) %>%
-  mutate(created_at = paste(created_at),
-         tweet_id   = as.numeric(paste(tweet_id)),
-         full_text = paste(full_text),
-         user_id = as.numeric(paste(user_id)),
-         user_location = paste(user_location),
-         geo_type = paste(geo_type),
-         geo_coordinates = paste(geo_coordinates),
-         language = paste(language),
-         retweet_count = as.numeric(paste(retweet_count)),
-         favorite_count = as.numeric(paste(favorite_count))) %>%
-  ungroup()
-
-df <- read_csv("../data/geotag_sb_tweets.csv")
-
-tweet_df2 <- bind_rows(df, tweet_df)
-
-write_csv(tweet_df2, "../data/geotag_sb_tweets.csv")
-```
-
 
 Think of another way to identify tourists and locals. Using [Eric Fisher's methods](https://labs.mapbox.com/bites/00245/locals/#5/38.000/-95.000), we identify a local as someone who has tweeted from the Santa Barbara area within a month range. A tourist is less likely to tweet multiple times within a month. Using `tidymetrics::cross_by_periods` we can count the number of tweets per user in a day/week/month.
 
@@ -96,7 +75,7 @@ The way we assigned "tourist" or "local" by year gives us some cases where in on
 
 ```{r duplicates}
 # show me the duplicates
-dups <- tourist_local$user_id[duplicated(alt_tourist_local$user_id)]
+dups <- tourist_local$user_id[duplicated(tourist_local$user_id)]
 
 tourist_local_update <- tourist_local %>%
   mutate(user_type = ifelse(user_id %in% dups, "local", user_type)) %>%
@@ -108,44 +87,46 @@ tourist_local_update <- tourist_local %>%
 tweet_df_w_user_type <- tweet_df %>%
   select(-user_type) %>%
   left_join(tourist_local_update)
-
 ```
+
 There are `r nrow(filter(tweet_df_w_user_type, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_df_w_user_type, user_type == "local"))` tweets from locals.
--------
 
-Static map
+Save
 
 ```{r}
-#get basemap
-mmap <- get_map(location = c(-120.5,33.88,-119.5,34.6), source = "osm")
+write_csv(tweet_df_w_user_type, "../data/geotag_sb_tweets_user_type.csv")
+```
 
-#turn data into sf object
-tweets_sf <- st_as_sf(tweet_df_w_user_type, coords = c("lon", "lat"), 
-                 crs = 4326)
+# Maps
 
-ggmap(mmap) +
-    geom_sf(data = tweets_sf, 
-            aes(color = user_type),
-            show.legend = "point", inherit.aes = FALSE, size = 0.8) +
-    coord_sf(datum = NA) +
-    theme_minimal()
+Turn the `tweet_df_w_user_type` data frame into a spatial object.
 
+```{r}
+tweet_df_w_user_type_sf <- tweet_df_w_user_type %>%
+  st_as_sf(coords = c("lon", "lat"))
+```
+
+## Hex density maps
+
+Locals only
+
+```{r}
+#santa barbara
+sb.map <- get_map("santa barbara, california", zoom = 14, maptype = "toner-lite") 
+
+ggmap(sb.map,  legend="none") +
+  coord_equal() +
+    labs(x = NULL, y = NULL) +
+    theme(axis.text = element_blank()) +
+    geom_hex(data = tweet_df_w_user_type %>% filter(user_type == "local"), 
+             aes(x=lon, y=lat, 
+                 fill = cut(..count.., c(0, 10, 50, 100, 500, 1000, 2000, Inf))), 
+             bins=150) +
+       scale_fill_viridis(discrete = TRUE,
+        labels = c("<10 ", "10-49 ", "50-99 ",
+                   "100-499 ", "500-999 ", "1000-4999", "5000+")) +
+  labs(fill = "# Tweets",
+       title = "Santa Barbara locals tweets")
 ```
 
 
-Interactive map
-
-```{r}
-library(leaflet)
-typeCol <- colorFactor(c("navy", "red"), domain = c("local", "tourist"))
-
-# plot points on top of a leaflet basemap
- 
-site_locations <- leaflet(tweet_df_w_user_type) %>%
-  addProviderTiles(providers$CartoDB.Positron) %>%
-  addCircleMarkers(lng = ~lon, lat = ~lat, popup = ~full_text,
-                   radius = 3, stroke = FALSE,
-                   color = ~typeCol(user_type), fillOpacity = 1)
-
-site_locations
-```

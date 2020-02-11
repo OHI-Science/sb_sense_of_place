@@ -1,0 +1,65 @@
+---
+title: "Applying the dictionary"
+author: "Jamie Afflerbach"
+date: "9/25/2019"
+output: html_document
+---
+
+This script takes the geotagged twitter data and applies the dictionary to the tweets to identify whether or not each tweet is considered "nature-based".
+
+```{r setup, include=FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(kableExtra)
+library(sf)
+```
+
+Load data
+```{r, message = FALSE, warning = FALSE}
+data       <- read_csv("../data/geotag_sb_tweets_user_type.csv")
+dictionary <- read_csv("../data/dictionary.csv")
+```
+
+Create a function to apply to each tweet that identifies whether there is a word in it or not. Since all dictionary words are lower case, we also turn the full_text column lowercase.
+
+```{r}
+nature_df <- data %>%
+  dplyr::mutate(full_text = tolower(full_text)) %>%
+  dplyr::mutate(nature_word = ifelse(
+    str_detect(full_text, paste(c(dictionary$word),collapse = '|')) == TRUE, 1, 0
+  )) 
+
+write_csv(nature_df, "../data/tweets_nature_categorized.csv")
+```
+
+Let's look at some examples
+
+```{r}
+kable(sample_n(nature_df, 20)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
+```
+
+# Where are nature-based tweets?
+
+
+
+# Who is tweeting nature-based tweets?
+
+
+Assign four categories so we can better look at how tourists and locals tweet about nature (or not).
+```{r}
+nature_df_user_type <- nature_df %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>% 
+    st_as_sf(coords = c("lon", "lat")) %>%
+    st_set_crs("+init=epsg:4326") %>%
+  mutate(tweet_type = ifelse(nature_word == 1, "nature tweet", "non-nature tweet"),
+         nature_user = case_when(
+            user_type == "local" & nature_word == 0 ~ "local, non nature tweet",
+            user_type == "tourist" & nature_word == 0 ~ "tourist, non nature tweet",
+            user_type == "tourist" & nature_word == 1 ~ "tourist, nature tweet",
+            user_type == "local" & nature_word == 1 ~ "local, nature tweet"
+        ))
+```
