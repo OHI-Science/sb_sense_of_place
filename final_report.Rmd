@@ -21,7 +21,7 @@ library(kableExtra)
 tweet_data <- read_csv("data/geotagged_sb_tweets.csv")
 ```
 
-# Summary
+# Overview
 
 Project summary
 
@@ -101,17 +101,24 @@ tweet_data_users_sf <- tweet_data_users %>%
 
 There are `r nrow(filter(tweet_data_users, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_data_users, user_type == "local"))` tweets from locals.
 
-## Nature-based dictionary
+## Identifying nature-based tweets
 
-# Looking at where people are tweeting from
+### Applying dictionary
 
-## General patterns across the city
+The dictionary is "nature-based" and is a list of words I put together. I had a hard time finding an ontology or lexicon that would fit this project. These are definitely skewed more towards nature and recreation rather than words like "home" or "connection".
 
-### Map of nature based vs non nature based
+```{r, echo = FALSE}
+dictionary <- read_csv("data/dictionary.csv")
 
-## Specifically parks and protected areas
+dictionary$word
+```
 
-### CPAD
+
+### Where are nature-based tweets?
+
+## Are tweets in protected areas more often nature-based?
+
+### California Protected Areas Database
 
 # Time
 
@@ -125,6 +132,8 @@ Initial hypothesis was identifying spikes in nature-based tweets around three si
 # Word clouds
 top 100 words for locals vs tourist. And we could do this in space. At sterns wharf what are people tweeting about? At Elings, what are locals tweeting about?
 
+![](figs/wordcloud_top_100_all_sb.png)
+
 Maybe in word clouds we can see some changes due to natural events
 
 ## All of SB
@@ -133,9 +142,6 @@ Maybe in word clouds we can see some changes due to natural events
 
 # Sentiment Analysis
 
-
-
-# Summary
 
 # Lessons learned
 

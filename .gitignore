@@ -52,4 +52,6 @@ rsconnect/
 *.DS_Store
 *._*
 
+sb_area_hexag*
+
 
