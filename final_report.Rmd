@@ -17,6 +17,7 @@ library(tidyverse)
 library(sf)
 library(leaflet)
 library(kableExtra)
+library(sp)
 
 tweet_data <- read_csv("data/geotagged_sb_tweets.csv")
 ```
@@ -84,7 +85,8 @@ hex_tweet_count <- hex_grid %>%
 
 log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes with no tweets
                  zcol = "log_tweet_count", layer.name = "Tweet count (log)")
-log_hex_map
+
+log_hex_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 12)
 ```
 
 ## Identifying tourists and locals
@@ -100,6 +102,45 @@ tweet_data_users_sf <- tweet_data_users %>%
 ```
 
 There are `r nrow(filter(tweet_data_users, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_data_users, user_type == "local"))` tweets from locals.
+
+The following map shows tweet **log density** by locals (top - blue) and tourists (bottom - red).
+
+```{r, echo = FALSE}
+
+hex_grid <- read_sf("data/sb_area_hexagons.shp")
+locals   <- tweet_data_users_sf %>% filter(user_type == "local")
+tourists <- tweet_data_users_sf %>% filter(user_type == "tourist")
+
+hex_tweet_count_locals <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, locals)),
+         log_tweet_count = log(tweet_count))
+
+hex_tweet_count_tourists <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, tourists)),
+         log_tweet_count = log(tweet_count))
+
+#color palettes
+blues = colorRampPalette(c("#DEEBF7", "#08306B"))
+reds = colorRampPalette(c("#FEE0D2", "#67000D"))
+
+m1 <- mapview(hex_tweet_count_locals %>% filter(tweet_count > 0), 
+        zcol = "log_tweet_count", 
+        layer.name = "# tweets by locals (log)",
+        col.regions = blues,
+        alpha.regions = 0.9,
+        legend = FALSE)
+m2 <- mapview(hex_tweet_count_tourists %>% filter(tweet_count > 0), 
+          zcol = "log_tweet_count", 
+          layer.name = "# tweets by tourists (log)",
+        col.regions = reds,
+        alpha.regions = 0.9, 
+        legend = FALSE) 
+
+m3 <- m1@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+m4 <- m2@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+sync(m3, m4, ncol = 1)
+```
+
 
 ## Identifying nature-based tweets
 
