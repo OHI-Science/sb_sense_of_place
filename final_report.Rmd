@@ -1,12 +1,24 @@
 ---
 title: "Final report"
-author: "Jamie Afflerbach"
-date: "2/5/2020"
-output: html_document
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(mapview)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(kableExtra)
+
+tweet_data <- read_csv("data/geotagged_sb_tweets.csv")
 ```
 
 # Summary
@@ -27,23 +39,73 @@ Twitter data
 
 ## Table of data 
 
+Here is a sample of the type of twitter information we obtained.
+
+```{r, echo = FALSE}
+kable(sample_n(tweet_data, 10)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
+```
+
 ## Caveats
 
 Required crimson hexagon access
 
-# Data processing
+## Maps
 
-## Tourists or Locals?
+### Interactive with cluster markers
+
+As you zoom in on the map, clusters will disaggregate. You can click on blue points to see the tweet.
+
+
+```{r, echo = FALSE}
+tweet_sf <- tweet_data %>%
+  st_as_sf(coords = c("lon", "lat")) %>%
+  st_set_crs(4326)
+
+#map
+leaflet(tweet_data) %>%
+  # Base groups
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  # Overlay groups %>%
+    addCircleMarkers(data = tweet_data, lng = ~lon, lat = ~lat, popup = ~full_text,
+                   radius = 3, stroke = FALSE, fillOpacity = 0.5, clusterOptions = markerClusterOptions())
+```
+
+### Tweet density
+
+This is log-transformed. There is a single coordinate that has over 11,000 tweets reported across all years. It is near De La Vina between Islay and Valerio. There is nothing remarkable about this site so I assume it is the default coordinate when people tag "Santa Barbara" generally. The coordinate is 34.4258, -119.714.
+
+```{r, echo = FALSE}
+hex_grid <- read_sf("data/sb_area_hexagons.shp")
+
+hex_tweet_count <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, tweet_sf)),
+         log_tweet_count = log(tweet_count))
+
+log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes with no tweets
+                 zcol = "log_tweet_count", layer.name = "Tweet count (log)")
+log_hex_map
+```
+
+## Identifying tourists and locals
+
+If the user has self-identified their location as somewhere in the Santa Barbara area, they are designated a *local*. This includes Carpinteria, Santa Barbara, Montecito, Goleta, Gaviota and UCSB. For the remainder, we use the number of times they have tweeted from Santa Barbara within a year to designate user type. If someone has tweeted across more than 2 months in the same year from Santa Barbara, they are identified as a local. This is consistent with how [Eric Fischer](https://www.citylab.com/transportation/2015/02/where-do-locals-go-in-major-cities-check-out-this-interactive-world-map/385768/) determined tourists in his work. This is not fool-proof and there are instances were people visit and tweet from Santa Barbara more than two months a year, especially if they are visiting family or live within a couple hours driving distance.
+
+```{r, echo = FALSE}
+tweet_data_users <- read_csv("data/geotag_sb_tweets_user_type.csv")
+
+tweet_data_users_sf <- tweet_data_users %>%
+  st_as_sf(coords = c("lon", "lat")) %>%
+  st_set_crs(4326)
+```
+
+There are `r nrow(filter(tweet_data_users, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_data_users, user_type == "local"))` tweets from locals.
 
 ## Nature-based dictionary
 
 # Looking at where people are tweeting from
 
 ## General patterns across the city
-
-### Map of all tweets in Santa Barbara across the time period
-
-### Map of locals vs users
 
 ### Map of nature based vs non nature based
 

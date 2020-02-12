@@ -1,10 +1,21 @@
 ---
-title: "Twitter data from Crimson Hexagon"
-author: "Jamie Afflerbach"
-output: html_document
+title: "01: Cleaning twitter data from Crimson Hexagon"
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
 ---
 
-```{r setup, include=FALSE}
+# Summary
+
+This script takes the raw data downloaded from Crimson Hexagon and cleans it up for analysis. At the bottom of the script there are a few exploratory maps.
+
+## Setup
+```{r setup, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(message = F, warning = F)
 
 library(tidyverse)
 library(jsonlite)
@@ -13,11 +24,16 @@ library(leaflet)
 library(sf)
 library(readxl)
 library(reticulate)
+library(RColorBrewer)
+library(kableExtra)
+library(mapview)
 ```
+
+# Data cleaning
 
 Crimson Hexagon data is saved in two day bulk exports. The CH website only allows exports of 10,000 randomly selected tweets. There seemed to be between 10-15k over any 2 day period so data was exported in 2-day chunks to try and get as much data as possible. Two filters were applied to the data before downloading - the location was set to Santa Barbara (this does not mean the tweet was geotagged but that it came from the area) and that it was an Original Tweet (not a retweet).
 
-```{r}
+```{r, eval = F}
 # list all .xlsx files
 xl_files <- list.files("../data/daily", pattern = ".xlsx", full.names = TRUE)
 
@@ -50,7 +66,7 @@ Now I use the python library, `twarc` in my terminal to "hydrate" the data using
 
 Once this is done, all tweets are saved in a JSON file.
 
-```{r}
+```{r, eval = F}
 # Give the input file name to the function.# 
 
 tweets1 <- stream_in(file("../data/tweets1.jsonl")) 
@@ -84,7 +100,7 @@ tweets28 <- stream_in(file("../data/tweets28.jsonl"))
 tweets29 <- stream_in(file("../data/tweets29.jsonl")) 
 ```
 
-```{r}
+```{r, eval = F}
 create_tweet_df <- function(tweets){
 
   
@@ -119,7 +135,7 @@ return(tweets_geo)
 
 Apply function
 
-```{r}
+```{r, eval = F}
 df1 <- create_tweet_df(tweets1)
 df2 <- create_tweet_df(tweets2)
 df3 <- create_tweet_df(tweets3)
@@ -152,15 +168,14 @@ df29 <- create_tweet_df(tweets29)
 ```
 
 Combine
-```{r}
+```{r, eval = F}
 all_df <- bind_rows(df1, df2, df3, df4, df5, df6, df7, df8, df9, df10, df11, df12, df13, df14,df15, df16, df17, df18, df19, df20, df21, df22, df23, df24, df25, df26, df27, df28, df29) 
 ```
 
-# Map tweets
 
 Remove points outside of our bounding box, which is c(-119.9,34.38,-119.5,34.48)
 
-```{r}
+```{r, eval = F}
 # create new df with just the tweet texts & usernames
 tweet_data <- all_df %>%
     mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
@@ -172,21 +187,22 @@ tweet_data <- all_df %>%
 write_csv(tweet_data, "../data/geotagged_sb_tweets.csv")
 ```
 
-Now we have `r nrow(tweet_data)`.
-
+# Map tweets
 
 ## Map of all tweets
 
 Turn the `tweet_df_w_user_type` data frame into a spatial object.
 
 ```{r}
+tweet_data <- read_csv("../data/geotagged_sb_tweets.csv")
+
 tweet_sf <- tweet_data %>%
   st_as_sf(coords = c("lon", "lat")) %>%
   st_set_crs(4326)
 ```
 
+### Interactive with cluster markers
 
-## Interactive leaflet map
 ```{r}
 #map
 map <- leaflet(tweet_data) %>%
@@ -195,12 +211,17 @@ map <- leaflet(tweet_data) %>%
   # Overlay groups %>%
     addCircleMarkers(data = tweet_data, lng = ~lon, lat = ~lat, popup = ~full_text,
                    radius = 3, stroke = FALSE, fillOpacity = 0.5, clusterOptions = markerClusterOptions())  
+mapshot(map, "../figs/all_tweet_map_cluster_markers.html")
 
 map
 ```
 
+
+### Static map of downtown
+
 ```{r}
 cols      = c(brewer.pal(9,"OrRd")[2:9])
+register_google(Sys.getenv("GOOGLE_ACCESS_TOKEN"))
 
 #santa barbara
 sb.map <- get_map("santa barbara, california", zoom = 14, maptype = "toner-lite") 
@@ -219,11 +240,11 @@ ggmap(sb.map,  legend="none") +
   labs(fill = "# Tweets",
        title = "Tweets in Santa Barbara 2015-2019")
 
+ggsave("../figs/all_tweets_sb_static_hex_map.png")
+
 ```
 
-# Hex map for whole area
-
-## Static map
+### Static map of whole area
 
 ```{r}
 #santa barbara
@@ -245,8 +266,6 @@ ggmap(sb.map,  legend="none") +
 
 ```
 
-## Interactive map
-
 ```{r, eval = F, echo = F}
 #santa barbara county shapefile
 sb_county <- read_sf("../data/CA_Counties_TIGER2016.shp") %>%
@@ -265,6 +284,8 @@ sb_county <- read_sf("../data/CA_Counties_TIGER2016.shp") %>%
 #write_sf(hex_grid, "../data/sb_area_hexagons.shp")
 ```
 
+### Interactive hex density
+
 Get hex density by overlaying with points
 
 ```{r}
@@ -273,7 +294,7 @@ hex_grid <- read_sf("../data/sb_area_hexagons.shp")
 hex_tweet_count <- hex_grid %>%
   mutate(tweet_count = lengths(st_intersects(hex_grid, tweet_sf)))
 
-mapview::mapview(hex_tweet_count %>% filter(tweet_count > 0))
+mapview(hex_tweet_count %>% filter(tweet_count > 0), zcol = "tweet_count", layer.name = "# tweets")
 ```
 
 Why are there so many tweets near De La Vina and Arrellaga hospital? Let's take a closer look at tweets by geo_coordinates
@@ -296,16 +317,16 @@ ggmap(sb.zoom.map,  legend="none") +
   coord_equal() +
     labs(x = NULL, y = NULL) +
     theme(axis.text = element_blank()) +
-    geom_hex(data = tweet_df_w_user_type, bins = 50)
+    geom_hex(data = tweet_data, bins = 50)
 ```
 
 The light blue point is equal to the coordinates c(34.4258, -119.714). I think this is the default coord when someone tags Santa Barbara. First clue is that there is nothing of significance at this location, it is a residential area. Let's take a look at a handful of tweets coming from here.
 
 ```{r}
-delavina_tweets <- tweet_df %>%
+delavina_tweets <- tweet_data %>%
   filter(geo_coordinates == "c(34.4258, -119.714)")
 
-kable(sample_n(delavina_tweets, 20)) %>%
+kable(sample_n(delavina_tweets, 10)) %>%
   kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
 ```
 
@@ -326,6 +347,10 @@ hex_tweet_count <- hex_grid %>%
            tweet_count >= 2000 ~ 2001
          ))
 
-mapview::mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes with no tweets
+log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes with no tweets
                  zcol = "log_tweet_count", layer.name = "Tweet count (log)")
+
+mapshot(log_hex_map, "../figs/sb_tweets_log_hex_map.html")
+
+log_hex_map
 ```

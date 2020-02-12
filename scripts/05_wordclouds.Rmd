@@ -1,7 +1,12 @@
 ---
-title: "Wordclouds"
-author: "Jamie Afflerbach"
-output: html_document
+title: "05: Wordclouds"
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
 ---
 
 
