@@ -1,0 +1,135 @@
+---
+title: "03: Applying the dictionary"
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
+---
+
+This script takes the geotagged twitter data and applies the dictionary to the tweets to identify whether or not each tweet is considered "nature-based".
+
+```{r setup, include=FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(kableExtra)
+library(sf)
+library(mapview)
+```
+
+Load data
+```{r, message = FALSE, warning = FALSE}
+data       <- read_csv("../data/geotag_sb_tweets_user_type.csv")
+dictionary <- read_csv("../data/dictionary.csv")
+```
+
+Create a function to apply to each tweet that identifies whether there is a word in it or not. Since all dictionary words are lower case, we also turn the full_text column lowercase.
+
+```{r}
+nature_df <- data %>%
+  dplyr::mutate(full_text = tolower(full_text)) %>%
+  dplyr::mutate(nature_word = ifelse(
+    str_detect(full_text, paste(c(dictionary$word),collapse = '|')) == TRUE, 1, 0
+  )) 
+```
+
+Let's look at some examples
+
+```{r}
+kable(sample_n(nature_df %>% filter(nature_word == 1), 20)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
+```
+
+# Where are nature-based tweets?
+
+```{r}
+nature_sf <- nature_df %>%
+  st_as_sf(coords = c("lon", "lat")) %>%
+  st_set_crs(4326)
+
+hex_grid <- read_sf("../data/sb_area_hexagons.shp")
+
+hex_tweet_count_nature <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, nature_sf %>% filter(nature_word == 1))),
+         log_tweet_count = log(tweet_count))
+
+#color palettes
+greens = colorRampPalette(c("#E5F5E0", "#00441B"))
+
+m <- mapview(hex_tweet_count_nature %>% filter(tweet_count > 0), 
+        zcol = "tweet_count", 
+        layer.name = "# Nature tweets",
+        col.regions = greens) 
+
+m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 12)
+```
+
+There are a LOT of nature-based tweets coming from one point.
+
+```{r}
+nature_df %>%
+  filter(nature_word == 1) %>%
+  group_by(geo_coordinates) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count)) %>%
+  head()
+```
+
+What's being tweeted at c(34.42, -119.7)?
+```{r}
+n <- nature_df %>%
+  filter(nature_word == 1,
+         geo_coordinates == "c(34.42, -119.7)")
+
+kable(sample_n(n, 10)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
+```
+
+It looks like a weather tweet bot! With the same user id (120332550). This account has `r nrow(filter(data, user_id == 120332550))` tweets in our dataset. It looks like the account is [_SantaBarbaraCA](https://twitter.com/_SantaBarbaraCA).
+
+I'm going to filter this account out of our dataset as it will skew our data.
+
+```{r}
+nature_df <- nature_df %>% filter(user_id!=120332550)
+write_csv(nature_df, "../data/tweets_nature_categorized.csv")
+```
+
+
+# Who is tweeting nature-based tweets?
+
+Assign four categories so we can better look at how tourists and locals tweet about nature (or not).
+```{r}
+nature_df_user_type <- nature_df %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>% 
+    st_as_sf(coords = c("lon", "lat")) %>%
+    st_set_crs("+init=epsg:4326") %>%
+  mutate(tweet_type = ifelse(nature_word == 1, "nature tweet", "non-nature tweet"),
+         nature_user = case_when(
+            user_type == "local" & nature_word == 0 ~ "local, non nature tweet",
+            user_type == "tourist" & nature_word == 0 ~ "tourist, non nature tweet",
+            user_type == "tourist" & nature_word == 1 ~ "tourist, nature tweet",
+            user_type == "local" & nature_word == 1 ~ "local, nature tweet"
+        ))
+```
+
+Not surprisingly there are less nature-based tweets than nature-based. Of all `r nrow(nature_df)` tweets, `r nrow(nature_df %>% filter(nature_word == 1))/nrow(data)*100`% are nature-based. 
+
+Of local tweeters, `r nrow(nature_df %>% filter(nature_word == 1, user_type == "local"))/nrow(nature_df %>% filter(user_type == "local"))*100`% of tweets are nature-based. Of tourists, `r nrow(nature_df %>% filter(nature_word == 1, user_type == "tourist"))/nrow(nature_df %>% filter(user_type == "tourist"))*100`% are nature-based.
+
+```{r}
+ggplot(nature_df_user_type, aes(x = tweet_type, fill = tweet_type)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(y = "# Tweets",
+       x = "Type of tweet") +
+  theme(legend.position = "none") +
+  facet_wrap(~user_type) +
+  scale_x_discrete(labels=c("Nature", "Non-nature")) +
+  scale_fill_manual(values = c("darkgreen", "darkgray"))
+```
+

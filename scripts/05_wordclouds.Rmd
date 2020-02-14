@@ -1,0 +1,81 @@
+---
+title: "05: Wordclouds"
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
+---
+
+
+```{r setup, include=FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+library(RColorBrewer)
+library(tidyverse)
+library(wordcloud)
+library(tm)
+library(qdapRegex)     # Removing URLs
+library(tidytext)
+```
+
+Load data
+
+```{r}
+
+data       <- read_csv("../data/geotagged_sb_tweets.csv") %>%
+  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
+  mutate(Year = as.numeric(Year)) %>%
+  separate(Day, into = c("Day", "Date"), sep = 4) %>%
+  separate(Date, into = c("Date", "Time"), sep = 7) %>%
+  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
+  separate(Date, into = c("Month", "Day"), sep = " ") %>%
+  mutate(Day = as.numeric(Day)) %>%
+  mutate(month_num = match(Month,month.abb)) %>%
+  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year),tryFormats = "%m/%d/%Y"))
+```
+
+```{r}
+tweets <- data %>%
+  select(Month, Day, Year, full_text, date, lat, lon)
+```
+
+
+```{r}
+tweets$tweets_cleaned_text <- gsub("https\\S*", "", tweets$full_text) 
+tweets$tweets_cleaned_text <- gsub("\n", " ", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("://t.co*", "", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("@\\S*", "", tweets$tweets_cleaned_text) 
+tweets$tweets_cleaned_text <- gsub("amp", "", tweets$tweets_cleaned_text) 
+tweets$tweets_cleaned_text <- gsub("[\r\n]", "", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("[[:punct:]]", "", tweets$tweets_cleaned_text)
+tweets$tweets_cleaned_text <- gsub("https?", "", tweets$tweets_cleaned_text)
+
+
+tweets_words <-  tweets %>%
+ select(tweets_cleaned_text) %>%
+ unnest_tokens(word, tweets_cleaned_text) %>%
+ anti_join(get_stopwords(language = "en", source = "smart")) #remove stop words using the "smart" source of 571 words
+
+#additional words I'm seeing that aren't in the smart list
+unwanted_words <- c("im", "ive", "1", "2", "youre", "dont", "3", "4", "5")
+
+words <- tweets_words %>% count(word, sort=TRUE) %>%
+  filter(!word %in% unwanted_words) #remove unwanted words
+```
+
+Wordcloud
+
+```{r}
+set.seed(1234) # for reproducibility 
+
+png("../figs/wordcloud_top_100_all_sb.png", width=4, height=3, units="in", res=300)
+wordcloud(words = words$word, freq = words$n, min.freq = 1,           
+          max.words=80, random.order=FALSE, rot.per=0.35,            
+          colors=brewer.pal(8, "Dark2"))
+
+```
+
+Do this by areas within Santa Barbara. 

@@ -1,0 +1,152 @@
+---
+title: "02: Identify tourists and locals"
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
+---
+
+# Summary
+
+This script takes the geotagged tweets and assigns each unique user a **user type**, either as a *local* or a *tourist*. If the user has self-identified their location as somewhere in the Santa Barbara area, they are designated a *local*. This includes Carpinteria, Santa Barbara, Montecito, Goleta, Gaviota and UCSB. For the remainder, we use the number of times they have tweeted from Santa Barbara within a year to designate user type. If someone has tweeted across more than 2 months in the same year from Santa Barbara, they are identified as a local. This is consistent with how [Eric Fischer](https://www.citylab.com/transportation/2015/02/where-do-locals-go-in-major-cities-check-out-this-interactive-world-map/385768/) determined tourists in his work. This is not fool-proof and there are instances were people visit and tweet from Santa Barbara more than two months a year, especially if they are visiting family or live within a couple hours driving distance.
+
+## Setup
+
+```{r setup, message = F, warning = F}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+
+library(tidyverse)
+library(leaflet)
+library(RColorBrewer)
+library(ggmap)
+library(viridis)
+library(sf)
+library(mapview)
+```
+
+## Identify tourists
+
+Think of another way to identify tourists and locals. Using [Eric Fisher's methods](https://labs.mapbox.com/bites/00245/locals/#5/38.000/-95.000), we identify a local as someone who has tweeted from the Santa Barbara area within a month range. A tourist is less likely to tweet multiple times within a month. 
+
+
+```{r}
+tweet_df <- read_csv("../data/geotagged_sb_tweets.csv") %>%
+  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
+  mutate(Year = as.numeric(Year)) %>%
+  separate(Day, into = c("Day", "Date"), sep = 4) %>%
+  separate(Date, into = c("Date", "Time"), sep = 7) %>%
+  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
+  select(-Extra, -tweet_id, -language, -geo_type, -Day) %>%
+  separate(Date, into = c("Month", "Day"), sep = " ") %>%
+  mutate(Day = as.numeric(Day)) %>%
+  mutate(month_num = match(Month,month.abb)) %>%
+  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year), tryFormats = "%m/%d/%Y"))
+
+num_month_tweets <- tweet_df %>%
+  group_by(user_id, user_location, Year) %>%
+  summarize(num_unique_months_tweeted = length(unique(month_num))) %>%
+  ungroup() 
+```
+
+We have `r nrow(tweet_df)` tweets from `r length(unique(tweet_df$user_id))` people.
+
+What we really want to do is use the number of tweets in a month/year range to tell us whether or not someone is a local or tourist. We can do this across the entire dataset, and then compare to our user location designation to see how right or wrong we were.
+
+Our assumption is that a locals tweets will occur across multiple months within a single year, whereas a tourist is most likely to only tweet within a month (when visiting) or multiple visits across multiple months/years.
+
+First, if folk self-identify as from the Santa Barbara area in their user location, we assign them locals, otherwise unknown.
+
+Then we take the unknowns and apply a couple rules.
+1. if they have tweeted in more than 2 months within the same year they are local
+2. if they have only tweeted in 1 or 2 months within a year they are a tourist
+
+```{r}
+tourist_local <- num_month_tweets %>%
+  group_by(user_id, user_location) %>% 
+  mutate(user_type = case_when(
+    str_detect(tolower(user_location), paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito", "805", "gaviota", "ucsb"), collapse = '|')) ~ "local",
+    TRUE ~ "unknown")) %>%
+  mutate(user_type = case_when(
+    user_type == "unknown" & num_unique_months_tweeted > 2 ~ "local", #if someone has tweeted in at least 6 months of a single year we will id them as local
+    user_type == "unknown" & num_unique_months_tweeted <= 2 ~ "tourist",
+    TRUE ~ as.character(user_type)
+  )) %>%
+  select(-num_unique_months_tweeted, -Year) %>%
+  distinct()
+```
+
+The way we assigned "tourist" or "local" by year gives us some cases where in one year. For those users that were identified as a tourist in one year and a local in another, we will default and call them all local. 
+
+```{r duplicates}
+# show me the duplicates
+dups <- tourist_local$user_id[duplicated(tourist_local$user_id)]
+
+tourist_local_update <- tourist_local %>%
+  mutate(user_type = ifelse(user_id %in% dups, "local", user_type)) %>%
+  distinct()
+```
+
+
+```{r}
+tweet_df_w_user_type <- tweet_df %>%
+  left_join(tourist_local_update)
+```
+
+There are `r nrow(filter(tweet_df_w_user_type, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_df_w_user_type, user_type == "local"))` tweets from locals.
+
+Save
+
+```{r}
+write_csv(tweet_df_w_user_type, "../data/geotag_sb_tweets_user_type.csv")
+```
+
+# Maps
+
+Turn the `tweet_df_w_user_type` data frame into a spatial object.
+
+```{r}
+tweet_df_w_user_type_sf <- tweet_df_w_user_type %>%
+  st_as_sf(coords = c("lon", "lat")) %>%
+  st_set_crs(4326)
+```
+
+## Hex density maps
+
+### Interactive hex density
+
+Get hex density by overlaying with points
+
+```{r}
+hex_grid <- read_sf("../data/sb_area_hexagons.shp")
+locals <- tweet_df_w_user_type_sf %>% filter(user_type == "local")
+tourists <- tweet_df_w_user_type_sf %>% filter(user_type == "tourist")
+
+hex_tweet_count_locals <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, locals)),
+         log_tweet_count = log(tweet_count))
+
+hex_tweet_count_tourists <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, tourists)),
+         log_tweet_count = log(tweet_count))
+
+#color palettes
+blues = colorRampPalette(c("#DEEBF7", "#08306B"))
+reds = colorRampPalette(c("#FEE0D2", "#67000D"))
+
+
+mapview(hex_tweet_count_locals %>% filter(tweet_count > 0), 
+        zcol = "log_tweet_count", 
+        layer.name = "# tweets by locals (log)",
+        col.regions = blues,
+        alpha.regions = 0.5) + 
+  mapview(hex_tweet_count_tourists %>% filter(tweet_count > 0), 
+          zcol = "log_tweet_count", 
+          layer.name = "# tweets by tourists (log)",
+        col.regions = reds,
+        alpha.regions = 0.5)
+```
+
+
