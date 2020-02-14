@@ -1,10 +1,13 @@
 ---
-title: "Applying the dictionary"
-author: "Jamie Afflerbach"
-date: "10/16/2019"
-output: html_document
+title: "04: Applying the dictionary"
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
 ---
-
 # Summary 
 
 This script takes the geotagged twitter data and applies the dictionary to the tweets to identify whether or not each tweet is considered "nature-based".

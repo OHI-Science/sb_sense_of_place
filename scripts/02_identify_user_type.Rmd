@@ -24,6 +24,7 @@ library(RColorBrewer)
 library(ggmap)
 library(viridis)
 library(sf)
+library(mapview)
 ```
 
 ## Identify tourists
@@ -127,7 +128,25 @@ hex_tweet_count_locals <- hex_grid %>%
   mutate(tweet_count = lengths(st_intersects(hex_grid, locals)),
          log_tweet_count = log(tweet_count))
 
-mapview::mapview(hex_tweet_count_locals %>% filter(tweet_count > 0), zcol = "log_tweet_count", layer.name = "# tweets by locals (log)")
+hex_tweet_count_tourists <- hex_grid %>%
+  mutate(tweet_count = lengths(st_intersects(hex_grid, tourists)),
+         log_tweet_count = log(tweet_count))
+
+#color palettes
+blues = colorRampPalette(c("#DEEBF7", "#08306B"))
+reds = colorRampPalette(c("#FEE0D2", "#67000D"))
+
+
+mapview(hex_tweet_count_locals %>% filter(tweet_count > 0), 
+        zcol = "log_tweet_count", 
+        layer.name = "# tweets by locals (log)",
+        col.regions = blues,
+        alpha.regions = 0.5) + 
+  mapview(hex_tweet_count_tourists %>% filter(tweet_count > 0), 
+          zcol = "log_tweet_count", 
+          layer.name = "# tweets by tourists (log)",
+        col.regions = reds,
+        alpha.regions = 0.5)
 ```
 
 
