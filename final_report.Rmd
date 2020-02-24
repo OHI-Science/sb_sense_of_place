@@ -36,27 +36,32 @@ Findings:
 
 # Data Overview
 
-Twitter data
+**Twitter data**
+
+Twitter data was obtained freely through a partnership between UCSB Library and Crimson Hexagon. Before downloading, the data was queried to meet the following conditions:
+
+1. Tweet came from the Santa Barbara area (add more details about how CH applies the location query)
+2. Only original tweets (no retweets)
+3. Date was marked between January 1, 2015 and December 31, 2019
+
+Crimson Hexagon only allows 10,000 randomly selected tweets to be exported, manually, at a time in .xls format. Due to this restriction, data was manually downloaded for every 2 days in order to capture all tweets. There were around 5000 average number of daily tweets that met these conditions.
+
+The Crimson Hexagon data did not contain all desired information, including whether or not the tweet was geotagged. To get this information we used the python `twarc` library to "rehydrate" the data using individual tweet ids and store the tweet information as .json files. From here we were able to remove all tweets that did not have a geotag, giving us a total of **82,876** tweets.
 
 ## Table of data 
 
-Here is a sample of the type of twitter information we obtained.
+Here is a sample of the type of the final twitter information we obtained.
 
 ```{r, echo = FALSE}
 kable(sample_n(tweet_data, 10)) %>%
   kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
 ```
 
-## Caveats
+The spatial distribution of tweets highlights areas of higher population density and tourist areas in downtown Santa Barbara. There is a single coordinate that has over 11,000 tweets reported across all years. It is near De La Vina between Islay and Valerio. There is nothing remarkable about this site so I assume it is the default coordinate when people tag "Santa Barbara" generally. The coordinate is 34.4258, -119.714.
 
-Required crimson hexagon access
-
-## Maps
-
-### Interactive with cluster markers
+#### Interactive with cluster markers
 
 As you zoom in on the map, clusters will disaggregate. You can click on blue points to see the tweet.
-
 
 ```{r, echo = FALSE}
 tweet_sf <- tweet_data %>%
@@ -72,9 +77,9 @@ leaflet(tweet_data) %>%
                    radius = 3, stroke = FALSE, fillOpacity = 0.5, clusterOptions = markerClusterOptions())
 ```
 
-### Tweet density
+#### Tweet density
 
-This is log-transformed. There is a single coordinate that has over 11,000 tweets reported across all years. It is near De La Vina between Islay and Valerio. There is nothing remarkable about this site so I assume it is the default coordinate when people tag "Santa Barbara" generally. The coordinate is 34.4258, -119.714.
+This is log-transformed. 
 
 ```{r, echo = FALSE}
 hex_grid <- read_sf("data/sb_area_hexagons.shp")
@@ -89,9 +94,11 @@ log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes
 log_hex_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 12)
 ```
 
-## Identifying tourists and locals
+# Identifying tourists and locals
 
-If the user has self-identified their location as somewhere in the Santa Barbara area, they are designated a *local*. This includes Carpinteria, Santa Barbara, Montecito, Goleta, Gaviota and UCSB. For the remainder, we use the number of times they have tweeted from Santa Barbara within a year to designate user type. If someone has tweeted across more than 2 months in the same year from Santa Barbara, they are identified as a local. This is consistent with how [Eric Fischer](https://www.citylab.com/transportation/2015/02/where-do-locals-go-in-major-cities-check-out-this-interactive-world-map/385768/) determined tourists in his work. This is not fool-proof and there are instances were people visit and tweet from Santa Barbara more than two months a year, especially if they are visiting family or live within a couple hours driving distance.
+This project aims to understand if and how preferences differ between tourists and locals for nature-based places within the Santa Barbara area. In order to test this we needed to come up with a way to identify tourists or locals. We used a two step process.
+
+First, if the user has self-identified their location as somewhere in the Santa Barbara area, they are designated a *local*. This includes Carpinteria, Santa Barbara, Montecito, Goleta, Gaviota and UCSB. For the remainder, we use the number of times they have tweeted from Santa Barbara within a year to designate user type. If someone has tweeted across more than 2 months in the same year from Santa Barbara, they are identified as a local. This is consistent with how [Eric Fischer](https://www.citylab.com/transportation/2015/02/where-do-locals-go-in-major-cities-check-out-this-interactive-world-map/385768/) determined tourists in his work. This is not fool-proof and there are instances were people visit and tweet from Santa Barbara more than two months a year, especially if they are visiting family or live within a couple hours driving distance.
 
 ```{r, echo = FALSE}
 tweet_data_users <- read_csv("data/geotag_sb_tweets_user_type.csv")
@@ -141,12 +148,12 @@ m4 <- m2@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 sync(m3, m4, ncol = 1)
 ```
 
+# Identifying nature-based tweets
 
-## Identifying nature-based tweets
+The full text of each tweet was analyzed to be either nature-based or not. We developed a coarse dictionary of words that indicate a nature-based tweet. These include natural features like ocean, coast, park, and works that indicate recreating (fishing, hiking, camping, etc.).
 
-### Applying dictionary
-
-The dictionary is "nature-based" and is a list of words I put together. I had a hard time finding an ontology or lexicon that would fit this project. These are definitely skewed more towards nature and recreation rather than words like "home" or "connection".
+**Note**
+I had a hard time finding an ontology or lexicon that would fit this project. These are definitely skewed more towards nature and recreation rather than words like "home" or "connection".
 
 ```{r, echo = FALSE}
 dictionary <- read_csv("data/dictionary.csv")
@@ -154,8 +161,7 @@ nature_df <- read_csv("data/tweets_nature_categorized.csv")
 dictionary$word
 ```
 
-
-Let's look at some examples
+Let's look at some examples of what tweets qualified as "nature-based".
 
 ```{r}
 kable(sample_n(nature_df %>% filter(nature_word == 1), 20)) %>%
@@ -163,6 +169,8 @@ kable(sample_n(nature_df %>% filter(nature_word == 1), 20)) %>%
 ```
 
 # Where are nature-based tweets?
+
+After identifying nature-based tweets we can take a look at where these tweets are coming from and compare to the general pattern of tweets. 
 
 ```{r}
 nature_sf <- nature_df %>%
@@ -274,3 +282,5 @@ Is there a threshold of tourists where locals don’t go anymore?
 In areas where we see both tourists and locals engaging, what characteristics do we see? 
 
 Quantifying transitions between rural to city. 
+
+# Talk about overall social media literature for conservation and how this project is similar/different and used lessons from those papers to guide this analysis.
