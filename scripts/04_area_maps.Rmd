@@ -22,7 +22,8 @@ library(leaflet)
 library(sf)
 library(mapview)
 library(RColorBrewer)
-library(htmlwidgets)
+library(ggmap)
+library(sp)
 ```
 
 Load data
@@ -30,7 +31,6 @@ Load data
 data       <- read_csv("../data/tweets_nature_categorized.csv")
 ```
 
-Create a function to apply to each tweet that identifies whether there is a word in it or not. Since all dictionary words are lower case, we also turn the `full_text` column lowercase.
 
 ```{r}
 nature_df <- data %>%
@@ -58,6 +58,16 @@ cpad <- read_sf("../data/CPAD_2019a/CPAD_2019a_Holdings.shp") %>%
   st_crop(xmin = -119.5, xmax = -120.5, ymin = 33.88, ymax = 34.6)
 ```
 
+Map of CPAD areas in Santa Barbara
+```{r}
+cpad_map <- mapview(cpad, zcol = "UNIT_NAME", legend = FALSE)
+cpad_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+
+cpad_map
+```
+
+**How many tweets come from these areas?**
+
 Count how many points in each polygon (all types of tweets not just nature based)
 
 ```{r}
@@ -65,9 +75,10 @@ cpad_nature_count <- cpad %>%
   mutate(pt_count = lengths(st_intersects(cpad, nature_df))) %>%
   filter(pt_count > 0)
 
-mapview(cpad_nature_count, col.regions = brewer.pal(6, "YlOrRd"),zcol = "pt_count")
+mapview(cpad_nature_count ,zcol = "pt_count")@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
+Some of these areas overlap with high tourist areas (e.g. the Zoo and Wharf). Let's look at the content of these tweets to see how often tweets coming from these locations are nature-based or not.
 
 # Compare occurrence of nature vs non-nature based tweets
 
@@ -84,21 +95,64 @@ cpad_all_count <- cpad %>%
          prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
   filter(!is.na(ratio)) %>%
   mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
-  st_set_geometry("geometry")
+  st_set_geometry("geometry") %>%
+  select(ACCESS_TYP, UNIT_NAME, SITE_NAME, MNG_AGNCY, nature_count, non_nature_count, ratio, prop)
 ```
 
-
+**There is no site with less than `r min(cpad_all_count$prop)*100`% of tweets being nature-based.**
 
 ```{r}
+mapview(cpad_all_count, zcol = "prop")
 
-site_locations <- mapview(nature_df, zcol = "tweet_type", col.regions = c("darkgreen", "gray"), layer.name = "Tweet types") + 
-  mapview(nature_df, zcol = "user_type", col.regions = c("purple", "yellow"), layer.name = "User types") +
-  mapview(nature_df %>% filter(nature_user %in% c("tourist, nature tweet", "local, nature tweet")), zcol = "nature_user", col.regions = c("darkgreen", "midnightblue"), layer.name = "User and nature tweets") +
-  mapview(cpad_all_count, zcol = "prop") +
-  mapview(cpad_all_count, zcol = "ratio") 
-  
 #mapshot(site_locations, file="sop_based_tweets.html")
 ```
 
+Does this hold true over time?
 
+Create a plot that shows proportion of nature-based tweets by site over time (might be too many, I would remove los padres forest)
 
+```{r}
+
+out <- data.frame()
+for(i in 2015:2019){
+  print(i)
+  yr_tweets <- nature_df %>% filter(Year == i)
+  yr_tweets_nn <- non_nature_tweets %>% filter(Year == i) #non-nature
+  
+cpad_by_year <- cpad %>%
+  st_set_geometry(NULL) %>%
+  mutate(nature_count = lengths(st_intersects(cpad, yr_tweets)),
+         non_nature_count = lengths(st_intersects(cpad, yr_tweets_nn))) %>%
+  rowwise() %>%
+  mutate(
+         ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count)),
+         year = i) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
+  select(ACCESS_TYP, UNIT_NAME, SITE_NAME, MNG_AGNCY, nature_count, non_nature_count, ratio, prop, year)
+
+out <- rbind(out, cpad_by_year)
+
+}
+
+```
+
+Plot without los padres national fores
+```{r}
+ggplot(out %>% filter(SITE_NAME != "Los Padres National Forest"), 
+       aes(x = year, y = prop, color = SITE_NAME)) +
+  geom_line() +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+This is messy but what it shows is that no area has less than 50%. Let's look at sites with more than 1 tweet
+
+```{r}
+ggplot(out %>% filter(nature_count > 1), aes(x = SITE_NAME, fill = as.character(year), y = prop)) +
+  geom_bar(stat = "identity", position = "dodge")
+
+```
+Look at sites that have tweets every year vs just once.
+
+Interesting, SB Bowl has highest number of tweets but lower prop (around 50%) meaning only half tweets from there are nature based. Whereas carp state beach has 77% nature based (227 vs 69) in 2015.

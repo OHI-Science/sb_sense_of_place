@@ -233,6 +233,73 @@ ggplot(nature_df_user_type, aes(x = tweet_type, fill = tweet_type)) +
 
 ### California Protected Areas Database
 
+We can use the CPAD data to identify protected areas. [expandon CPAD here]
+
+```{r, echo = FALSE}
+cpad <- read_sf("data/CPAD_2019a/CPAD_2019a_Holdings.shp") %>%
+  filter(COUNTY == "Santa Barbara") %>%
+  st_transform("+init=epsg:4326") %>%
+  st_crop(xmin = -119.5, xmax = -120.5, ymin = 33.88, ymax = 34.6)
+
+cpad_map <- mapview(cpad, zcol = "UNIT_NAME", legend = FALSE)
+cpad_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+```
+
+
+**How many tweets come from these areas?**
+
+Count how many points in each polygon (all types of tweets not just nature based)
+
+```{r, echo = FALSE}
+nature_sf <- nature_df %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>% 
+    st_as_sf(coords = c("lon", "lat")) %>%
+    st_set_crs("+init=epsg:4326") %>%
+  mutate(tweet_type = ifelse(nature_word == 1, "nature tweet", "non-nature tweet"),
+         nature_user = case_when(
+            user_type == "local" & nature_word == 0 ~ "local, non nature tweet",
+            user_type == "tourist" & nature_word == 0 ~ "tourist, non nature tweet",
+            user_type == "tourist" & nature_word == 1 ~ "tourist, nature tweet",
+            user_type == "local" & nature_word == 1 ~ "local, nature tweet"
+        ))
+
+cpad_nature_count <- cpad %>%
+  mutate(pt_count = lengths(st_intersects(cpad, nature_sf))) %>%
+  filter(pt_count > 0)
+
+mapview(cpad_nature_count ,zcol = "pt_count")@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+```
+
+Some of these areas overlap with high tourist areas (e.g. the Zoo and Wharf). Let's look at the content of these tweets to see how often tweets coming from these locations are nature-based or not.
+
+### Compare occurrence of nature vs non-nature based tweets
+
+```{r, echo = FALSE}
+non_nature_tweets <- nature_sf %>% 
+  filter(nature_word == 0)
+
+cpad_all_count <- cpad %>%
+  mutate(nature_count = lengths(st_intersects(cpad, nature_sf)),
+         non_nature_count = lengths(st_intersects(cpad, non_nature_tweets))) %>%
+  rowwise() %>%
+  mutate(
+         ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
+  st_set_geometry("geometry") %>%
+  select(ACCESS_TYP, UNIT_NAME, SITE_NAME, MNG_AGNCY, nature_count, non_nature_count, ratio, prop)
+```
+
+**There is no site with less than `r min(cpad_all_count$prop)*100`% of tweets being nature-based.**
+
+```{r, echo = FALSE}
+mapview(cpad_all_count, zcol = "prop")
+```
+
+----
 # Time
 
 ## Timeline of tweets
