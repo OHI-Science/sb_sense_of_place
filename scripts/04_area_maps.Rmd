@@ -24,6 +24,8 @@ library(mapview)
 library(RColorBrewer)
 library(ggmap)
 library(sp)
+library(ggpol) #for the facet_share function
+library(grid) #for plot.margin
 ```
 
 Load data
@@ -62,17 +64,38 @@ Map of CPAD areas in Santa Barbara
 ```{r}
 cpad_map <- mapview(cpad, zcol = "UNIT_NAME", legend = FALSE)
 cpad_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
-
-cpad_map
 ```
+
+There are some issues with some of these polygons. Most apparent is the three polygons with UNIT_NAME "Santa Barbara Maitime Musem". Aside from the typo, this name is assigned to the museum itself as well as the harbor and west beach.
+
+There are multiple polygons with the same site name (e.g. Douglas preserve, elings park, sb harbor). I combine those into one polygon here.
+
+```{r fix}
+cpad_select <- cpad %>%
+  select(HOLDING_ID, ACCESS_TYP, SITE_NAME, MNG_AGNCY) %>%
+  mutate(SITE_NAME = case_when(
+    HOLDING_ID == 1964 ~ "Santa Barbara Harbor",
+    HOLDING_ID == 1949 ~ "Santa Barbara Harbor",
+    HOLDING_ID == 1698 ~ "Santa Barbara Maritime Museum",
+    HOLDING_ID == 3284 ~ "Carrillo Recreation Center",
+    TRUE ~ as.character(SITE_NAME)
+  )) %>%
+  group_by(SITE_NAME, MNG_AGNCY) %>%
+  summarise() %>%
+  ungroup()
+
+#mapview(cpad_select, zcol = "SITE_NAME", legend = FALSE)
+write_sf(cpad_select, "../data/cpad_fixed.shp", driver = "ESRI Shapefile")
+```
+
 
 **How many tweets come from these areas?**
 
 Count how many points in each polygon (all types of tweets not just nature based)
 
 ```{r}
-cpad_nature_count <- cpad %>%
-  mutate(pt_count = lengths(st_intersects(cpad, nature_df))) %>%
+cpad_nature_count <- cpad_select %>%
+  mutate(pt_count = lengths(st_intersects(cpad_select, nature_df))) %>%
   filter(pt_count > 0)
 
 mapview(cpad_nature_count ,zcol = "pt_count")@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
@@ -86,26 +109,235 @@ Some of these areas overlap with high tourist areas (e.g. the Zoo and Wharf). Le
 non_nature_tweets <- nature_df %>% 
   filter(nature_word == 0)
 
-cpad_all_count <- cpad %>%
-  mutate(nature_count = lengths(st_intersects(cpad, nature_df)),
-         non_nature_count = lengths(st_intersects(cpad, non_nature_tweets))) %>%
+cpad_all_count <- cpad_select %>%
+  mutate(nature_count = lengths(st_intersects(cpad_select, nature_df)),
+         non_nature_count = lengths(st_intersects(cpad_select, non_nature_tweets))) %>%
   rowwise() %>%
   mutate(
          ratio = nature_count/non_nature_count,
          prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
   filter(!is.na(ratio)) %>%
   mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
-  st_set_geometry("geometry") %>%
-  select(ACCESS_TYP, UNIT_NAME, SITE_NAME, MNG_AGNCY, nature_count, non_nature_count, ratio, prop)
+  st_set_geometry("geometry")
 ```
 
 **There is no site with less than `r min(cpad_all_count$prop)*100`% of tweets being nature-based.**
 
 ```{r}
 mapview(cpad_all_count, zcol = "prop")
-
-#mapshot(site_locations, file="sop_based_tweets.html")
 ```
+
+The highest ratio of nature tweets to non-nature takes place at `r filter(cpad_all_count, ratio == max(cpad_all_count$ratio))$SITE_NAME`.
+
+```{r}
+mapview(cpad_all_count, zcol = "ratio")
+```
+
+Let's look at the top 20 most popular sites
+
+```{r}
+top_20 <- cpad_all_count %>%
+  st_set_geometry(NULL) %>%
+  arrange(-nature_count) %>%
+  slice(1:20) %>%
+  pivot_longer(cols = c(nature_count, non_nature_count), names_to = "tweet_type", values_to = "count")
+
+top_20_prop <- top_20 %>% 
+  select(SITE_NAME, prop, count) %>%
+  group_by(SITE_NAME, prop) %>%
+  summarise(count = sum(count)) %>%
+  ungroup() %>%
+  distinct() %>%
+  mutate(prop = paste0(round(100*prop,0),"% "))
+
+ggplot(top_20, aes(x = reorder(SITE_NAME, count), fill = tweet_type, y = count)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "",
+       y = "Number of tweets",
+       fill = "",
+       title = "Top 20 most tweeted from protected areas* in Santa Barbara") +
+  scale_fill_manual(values = c("darkgreen", "gray"), labels = c("Nature-based", "Other")) +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 3.3)) +
+    geom_text(aes(SITE_NAME, y = count, label = prop, fill = NULL), 
+              data = top_20_prop, hjust = -0.05, size = 3) +
+  ylim(0, 1510)
+```
+
+Not surprisingly the Santa Barbara Bowl has the most number of tweets, but only half are nature based (the view is great!). If we just look at proportion of nature-based tweets we see a different ordering
+
+```{r}
+top_20 <- cpad_all_count %>%
+  st_set_geometry(NULL) %>%
+  arrange(-prop) %>%
+  slice(1:20) 
+
+ggplot(top_20, aes(x = reorder(SITE_NAME, prop), y = prop)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "",
+       y = "Proportion of tweets that are nature-based",
+       title = "Top 20 sites with highest proportion of nature-based tweets") +
+  theme(plot.title = element_text(hjust = -14)) 
+```
+Do the same but with parks that have at least two tweets. We get an oddity here with places that have just 1 tweet and that is nature-based (100%)
+
+```{r}
+top_20 <- cpad_all_count %>%
+  group_by(SITE_NAME, MNG_AGNCY) %>%
+  mutate(total_tweets = sum(nature_count, non_nature_count)) %>%
+  ungroup() %>%
+  filter(total_tweets > 1) %>%
+  st_set_geometry(NULL) %>%
+  arrange(-prop) %>%
+  slice(1:20) 
+
+ggplot(top_20, aes(x = reorder(SITE_NAME, prop), y = prop)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "",
+       y = "Proportion of tweets that are nature-based",
+       title = "Top 20 sites with highest proportion of nature-based tweets") +
+  theme(plot.title = element_text(hjust = 20)) 
+```
+
+## How does this differ across tourists and locals?
+
+```{r}
+cpad_locals <- cpad_select %>%
+  mutate(nature_count = lengths(st_intersects(cpad_select, nature_df %>% filter(user_type == "local"))),
+         non_nature_count = lengths(st_intersects(cpad_select, non_nature_tweets %>% filter(user_type == "local")))) %>%
+  rowwise() %>%
+  mutate(
+         ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio),
+         user_type = "local") %>% 
+  st_set_geometry("geometry")
+
+cpad_tourists <- cpad_select %>%
+  mutate(nature_count = lengths(st_intersects(cpad_select, nature_df %>% filter(user_type == "tourist"))),
+         non_nature_count = lengths(st_intersects(cpad_select, non_nature_tweets %>% filter(user_type == "tourist")))) %>%
+  rowwise() %>%
+  mutate(
+         ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio),
+         user_type = "tourist") %>% 
+  st_set_geometry("geometry")
+
+cpad_users <- cpad_locals %>%
+  rbind(cpad_tourists)
+```
+
+Look at proportion and number of tweets by locals
+```{r locals_plots}
+
+top_20_local <- cpad_locals %>%
+  st_set_geometry(NULL) %>%
+  arrange(-nature_count) %>%
+  slice(1:20) %>%
+  pivot_longer(cols = c(nature_count, non_nature_count), names_to = "tweet_type", values_to = "count")
+
+top_20_prop_local <- top_20_local %>% 
+  select(SITE_NAME, prop, count) %>%
+  group_by(SITE_NAME, prop) %>%
+  summarise(count = sum(count)) %>%
+  ungroup() %>%
+  distinct() %>%
+  mutate(prop = paste0(round(100*prop,0),"% "))
+
+locals_prop <- ggplot(top_20_local, aes(x = reorder(SITE_NAME, count), fill = tweet_type, y = count)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "",
+       y = "Number of tweets",
+       fill = "",
+       title = "Top 20 most tweeted from protected areas* by locals in Santa Barbara") +
+  scale_fill_manual(values = c("darkgreen", "gray"), labels = c("Nature-based", "Other")) +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 1.8)) +
+    geom_text(aes(SITE_NAME, y = count, label = prop, fill = NULL), 
+              data = top_20_prop_local, hjust = -0.05, size = 3) +
+  ylim(0, 800)
+locals_prop
+```
+```{r tourists_plots}
+
+top_20_tourist <- cpad_tourists %>%
+  st_set_geometry(NULL) %>%
+  arrange(-nature_count) %>%
+  slice(1:20) %>%
+  pivot_longer(cols = c(nature_count, non_nature_count), names_to = "tweet_type", values_to = "count")
+
+top_20_prop_tourist <- top_20_tourist %>% 
+  select(SITE_NAME, prop, count) %>%
+  group_by(SITE_NAME, prop) %>%
+  summarise(count = sum(count)) %>%
+  ungroup() %>%
+  distinct() %>%
+  mutate(prop = paste0(round(100*prop,0),"% "))
+
+tourists_prop <- ggplot(top_20_tourist, aes(x = reorder(SITE_NAME, count), fill = tweet_type, y = count)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "",
+       y = "Number of tweets",
+       fill = "",
+       title = "Top 20 most tweeted from protected areas* by tourists in Santa Barbara") +
+  scale_fill_manual(values = c("darkgreen", "gray"), labels = c("Nature-based", "Other")) +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 1.8)) +
+    geom_text(aes(SITE_NAME, y = count, label = prop, fill = NULL), 
+              data = top_20_prop_tourist, hjust = -0.05, size = 3) +
+  ylim(0, 800) 
+
+tourists_prop
+```
+
+Areas with at least 50 tweets.
+
+```{r, message = FALSE, warning= FALSE}
+pyramid_df <- cpad_users %>%
+  st_set_geometry(NULL) %>%
+  #mutate(prop_non_nature = 1-prop) %>%
+  pivot_longer(cols = c(nature_count, non_nature_count), names_to = "tweet_type", values_to = "count") %>%
+  group_by(SITE_NAME) %>%
+  mutate(total = sum(count)) %>%
+  ungroup() %>%
+  filter(total > 49) %>%
+  mutate(count = ifelse(user_type == "local", -1*count, count),
+         prop = ifelse(tweet_type == "non_nature_count", NA, prop))
+
+labs <- c(local = "Locals", tourist = "Tourists")
+
+ggplot(pyramid_df, aes(x = reorder(SITE_NAME, total), fill = tweet_type, y = count)) +
+  geom_bar(stat = "identity", position = "stack") +
+  #geom_text(aes(label = round(prop*100,0), y = count), size = 3) +
+  facet_share(~user_type, dir = "h", scales = "free", reverse_num = TRUE, 
+              labeller = labeller(user_type = labs)) +
+  coord_flip() +
+  theme_minimal() +
+  scale_fill_manual(values = c("darkgreen", "gray"), labels = c("Nature-based", "Other")) +
+  theme(legend.position = "none",
+        plot.margin=grid::unit(c(0,10,0,-60), "mm")) +
+  labs(x=NULL,y=NULL)
+
+ggsave("../figs/pyramid_plot_num_tweets_per_area.png")
+```
+
+
+## What sites have no tweets?
+
+------
 
 Does this hold true over time?
 
@@ -137,22 +369,3 @@ out <- rbind(out, cpad_by_year)
 }
 
 ```
-
-Plot without los padres national fores
-```{r}
-ggplot(out %>% filter(SITE_NAME != "Los Padres National Forest"), 
-       aes(x = year, y = prop, color = SITE_NAME)) +
-  geom_line() +
-  theme_minimal() +
-  theme(legend.position = "none")
-```
-This is messy but what it shows is that no area has less than 50%. Let's look at sites with more than 1 tweet
-
-```{r}
-ggplot(out %>% filter(nature_count > 1), aes(x = SITE_NAME, fill = as.character(year), y = prop)) +
-  geom_bar(stat = "identity", position = "dodge")
-
-```
-Look at sites that have tweets every year vs just once.
-
-Interesting, SB Bowl has highest number of tweets but lower prop (around 50%) meaning only half tweets from there are nature based. Whereas carp state beach has 77% nature based (227 vs 69) in 2015.
