@@ -22,6 +22,7 @@ library(ggpol) #for the facet_share function
 library(grid) #for plot.margin
 
 tweet_data <- read_csv("data/geotagged_sb_tweets.csv")
+mapviewOptions(basemaps = c("CartoDB.Positron", "OpenStreetMap"))
 ```
 
 # Project Summary
@@ -50,15 +51,15 @@ Twitter data was obtained freely through a partnership between UCSB Library and 
 
 Crimson Hexagon only allows 10,000 randomly selected tweets to be exported, manually, at a time in .xls format. Due to this restriction, data was manually downloaded for every 2 days in order to capture all tweets. There were around 5000 average number of daily tweets that met these conditions.
 
-The Crimson Hexagon data did not contain all desired information, including whether or not the tweet was geotagged. To get this information we used the python `twarc` library to "rehydrate" the data using individual tweet ids and store the tweet information as .json files. From here we were able to remove all tweets that did not have a geotag, giving us a total of **82,876** tweets.
+The Crimson Hexagon data did not contain all desired information, including whether or not the tweet was geotagged. To get this information we used the python `twarc` library to "rehydrate" the data using individual tweet ids and store the tweet information as .json files. From here we were able to remove all tweets that did not have a geotag, giving us a total of **79,981** tweets.
 
 #### Table of data
 
 Here is a sample of the type of the final twitter information we obtained.
 
 ```{r, echo = FALSE}
-kable(sample_n(tweet_data, 10)) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
+kable(sample_n(tweet_data %>% select(-tweet_id, -user_id, -geo_type, -geo_coordinates, -language, -lat, -lon), 7)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 11, fixed_thead = T)
 ```
 
 The spatial distribution of tweets highlights areas of higher population density and tourist areas in downtown Santa Barbara. There is a single coordinate that has over 11,000 tweets reported across all years. It is near De La Vina between Islay and Valerio. There is nothing remarkable about this site so I assume it is the default coordinate when people tag "Santa Barbara" generally. The coordinate is 34.4258, -119.714.
@@ -95,7 +96,7 @@ hex_tweet_count <- hex_grid %>%
 log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes with no tweets
                  zcol = "log_tweet_count", layer.name = "Tweet count (log)")
 
-log_hex_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 12)
+log_hex_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
 ## Tourists and locals
@@ -168,8 +169,8 @@ dictionary$word
 Let's look at some examples of what tweets qualified as "nature-based".
 
 ```{r}
-kable(sample_n(nature_df %>% filter(nature_word == 1), 20)) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
+kable(sample_n(nature_df %>% filter(nature_word == 1) %>% select(date, full_text, user_location, user_type, nature_word), 7)) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 11, fixed_thead = T)
 ```
 
 ### Where are nature-based tweets?
@@ -190,10 +191,10 @@ greens = colorRampPalette(c("#E5F5E0", "#00441B"))
 
 m <- mapview(hex_tweet_count_nature %>% filter(tweet_count > 0), 
         zcol = "log_tweet_count", 
-        layer.name = "# Nature tweets (log)",
-        col.regions = greens) 
+        layer.name = "# Nature tweets (log)")
+        #col.regions = greens) 
 
-m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 12)
+m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
 

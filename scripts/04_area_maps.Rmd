@@ -346,7 +346,7 @@ Create a plot that shows proportion of nature-based tweets by site over time (mi
 out <- data.frame()
 for(i in 2015:2019){
   print(i)
-  yr_tweets <- nature_df %>% filter(Year == i)
+  yr_tweets <- nature_tweets %>% filter(Year == i)
   yr_tweets_nn <- non_nature_tweets %>% filter(Year == i) #non-nature
   
 cpad_by_year <- cpad %>%
@@ -359,11 +359,15 @@ cpad_by_year <- cpad %>%
          prop  = nature_count/sum(c(nature_count, non_nature_count)),
          year = i) %>%
   filter(!is.na(ratio)) %>%
-  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
-  select(ACCESS_TYP, UNIT_NAME, SITE_NAME, MNG_AGNCY, nature_count, non_nature_count, ratio, prop, year)
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio))
 
 out <- rbind(out, cpad_by_year)
 
 }
 
+ggplot(out, aes(x = year, y = nature_count, color = SITE_NAME)) +
+  geom_line() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  facet_wrap(~MNG_AGNCY)
 ```
