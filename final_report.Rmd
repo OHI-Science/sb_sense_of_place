@@ -24,19 +24,21 @@ library(grid) #for plot.margin
 tweet_data <- read_csv("data/geotagged_sb_tweets.csv")
 ```
 
-# Overview
+# Project Summary
 
 Project summary
 
-Goals:
+Goals
 - 
 - 
 - 
 
-Findings:
+Findings
 
 
-# Data Overview
+# Analysis & findings
+
+### Data Overview
 
 **Twitter data**
 
@@ -50,7 +52,7 @@ Crimson Hexagon only allows 10,000 randomly selected tweets to be exported, manu
 
 The Crimson Hexagon data did not contain all desired information, including whether or not the tweet was geotagged. To get this information we used the python `twarc` library to "rehydrate" the data using individual tweet ids and store the tweet information as .json files. From here we were able to remove all tweets that did not have a geotag, giving us a total of **82,876** tweets.
 
-## Table of data 
+#### Table of data
 
 Here is a sample of the type of the final twitter information we obtained.
 
@@ -61,7 +63,7 @@ kable(sample_n(tweet_data, 10)) %>%
 
 The spatial distribution of tweets highlights areas of higher population density and tourist areas in downtown Santa Barbara. There is a single coordinate that has over 11,000 tweets reported across all years. It is near De La Vina between Islay and Valerio. There is nothing remarkable about this site so I assume it is the default coordinate when people tag "Santa Barbara" generally. The coordinate is 34.4258, -119.714.
 
-#### Interactive with cluster markers
+#### Interactive map with cluster markers
 
 As you zoom in on the map, clusters will disaggregate. You can click on blue points to see the tweet.
 
@@ -96,7 +98,7 @@ log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes
 log_hex_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 12)
 ```
 
-# Identifying tourists and locals
+## Tourists and locals
 
 This project aims to understand if and how preferences differ between tourists and locals for nature-based places within the Santa Barbara area. In order to test this we needed to come up with a way to identify tourists or locals. We used a two step process.
 
@@ -150,7 +152,7 @@ m4 <- m2@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 sync(m3, m4, ncol = 1)
 ```
 
-# Identifying nature-based tweets
+## Nature-based tweets
 
 The full text of each tweet was analyzed to be either nature-based or not. We developed a coarse dictionary of words that indicate a nature-based tweet. These include natural features like ocean, coast, park, and works that indicate recreating (fishing, hiking, camping, etc.).
 
@@ -170,7 +172,7 @@ kable(sample_n(nature_df %>% filter(nature_word == 1), 20)) %>%
   kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
 ```
 
-# Where are nature-based tweets?
+### Where are nature-based tweets?
 
 After identifying nature-based tweets we can take a look at where these tweets are coming from and compare to the general pattern of tweets. 
 
@@ -195,7 +197,7 @@ m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 12)
 ```
 
 
-# Who is tweeting nature-based tweets?
+### Who is tweeting nature-based tweets?
 
 ```{r, echo = FALSE}
 nature_df_user_type <- nature_df %>%
@@ -230,10 +232,9 @@ ggplot(nature_df_user_type, aes(x = tweet_type, fill = tweet_type)) +
 ```
 
 
+### Are tweets in protected areas more often nature-based?
 
-## Are tweets in protected areas more often nature-based?
-
-### California Protected Areas Database
+**California Protected Areas Database**
 
 We can use the CPAD data to identify protected areas. [expandon CPAD here]
 
@@ -263,45 +264,34 @@ nature_sf <- nature_df %>%
             user_type == "tourist" & nature_word == 1 ~ "tourist, nature tweet",
             user_type == "local" & nature_word == 1 ~ "local, nature tweet"
         ))
-
-cpad_nature_count <- cpad %>%
-  mutate(pt_count = lengths(st_intersects(cpad, nature_sf))) %>%
-  filter(pt_count > 0)
-
-mapview(cpad_nature_count ,zcol = "pt_count")@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
 Some of these areas overlap with high tourist areas (e.g. the Bowl, Zoo and Wharf). Let's look at the content of these tweets to see how often tweets coming from these locations are nature-based or not.
 
-### Compare occurrence of nature vs non-nature based tweets
+**Compare occurrence of nature vs non-nature based tweets**
 
 ```{r, echo = FALSE}
+nature_tweets <- nature_sf %>%
+  filter(nature_word == 1)
 non_nature_tweets <- nature_sf %>% 
   filter(nature_word == 0)
 
 cpad_all_count <- cpad %>%
-  mutate(nature_count = lengths(st_intersects(cpad, nature_sf)),
+  mutate(total_tweets = lengths(st_intersects(cpad, nature_sf)),
+         nature_count = lengths(st_intersects(cpad, nature_tweets)),
          non_nature_count = lengths(st_intersects(cpad, non_nature_tweets))) %>%
   rowwise() %>%
-  mutate(
-         ratio = nature_count/non_nature_count,
-         prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
+  mutate(ratio = nature_count/non_nature_count,
+         prop  = nature_count/total_tweets) %>%
   filter(!is.na(ratio)) %>%
   mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
   st_set_geometry("geometry")
 ```
 
-**There is no site with less than `r min(cpad_all_count$prop)*100`% of tweets being nature-based.**
-
-```{r, echo = FALSE}
-mapview(cpad_all_count, zcol = "prop")
-```
-
-
 The highest ratio of nature tweets to non-nature takes place at `r filter(cpad_all_count, ratio == max(cpad_all_count$ratio))$SITE_NAME`.
 
-```{r, echo = FALSE}
-mapview(cpad_all_count, zcol = "ratio")
+```{r}
+mapview(cpad_all_count %>% select(prop, ratio, total_tweets), burst = TRUE, hide = TRUE)@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
 Let's look at the top 20 most popular sites
@@ -360,15 +350,14 @@ ggplot(top_20, aes(x = reorder(SITE_NAME, prop), y = prop)) +
 ```
 
 
-## How does this differ across tourists and locals?
+**How does this differ across tourists and locals?**
 
 ```{r}
 cpad_locals <- cpad %>%
-  mutate(nature_count = lengths(st_intersects(cpad, nature_sf %>% filter(user_type == "local"))),
+  mutate(nature_count = lengths(st_intersects(cpad, nature_tweets %>% filter(user_type == "local"))),
          non_nature_count = lengths(st_intersects(cpad, non_nature_tweets %>% filter(user_type == "local")))) %>%
   rowwise() %>%
-  mutate(
-         ratio = nature_count/non_nature_count,
+  mutate(ratio = nature_count/non_nature_count,
          prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
   filter(!is.na(ratio)) %>%
   mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio),
@@ -376,11 +365,10 @@ cpad_locals <- cpad %>%
   st_set_geometry("geometry")
 
 cpad_tourists <- cpad %>%
-  mutate(nature_count = lengths(st_intersects(cpad, nature_sf %>% filter(user_type == "tourist"))),
+  mutate(nature_count = lengths(st_intersects(cpad, nature_tweets %>% filter(user_type == "tourist"))),
          non_nature_count = lengths(st_intersects(cpad, non_nature_tweets %>% filter(user_type == "tourist")))) %>%
   rowwise() %>%
-  mutate(
-         ratio = nature_count/non_nature_count,
+  mutate(ratio = nature_count/non_nature_count,
          prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
   filter(!is.na(ratio)) %>%
   mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio),
@@ -402,7 +390,7 @@ pyramid_df <- cpad_users %>%
   group_by(SITE_NAME) %>%
   mutate(total = sum(count)) %>%
   ungroup() %>%
-  filter(total > 49) %>%
+  filter(total > 24) %>%
   mutate(count = ifelse(user_type == "local", -1*count, count),
          prop = ifelse(tweet_type == "non_nature_count", NA, prop))
 
@@ -421,32 +409,29 @@ ggplot(pyramid_df, aes(x = reorder(SITE_NAME, total), fill = tweet_type, y = cou
   labs(x=NULL,y=NULL)
 ```
 
-----
-
-# Are there areas with >50% nature-based tweets that aren't designated?
 
 ----
-# Time
+## Time
 
-## Timeline of tweets
+### Timeline of tweets
 
 Initial hypothesis was identifying spikes in nature-based tweets around three significant events:
 - Refugio oil spill in 2015
 - Thomas fire in 2017
 - Debris flow in 2018
 
-# Word clouds
+## Word clouds
 top 100 words for locals vs tourist. And we could do this in space. At sterns wharf what are people tweeting about? At Elings, what are locals tweeting about?
 
 ![](figs/wordcloud_top_100_all_sb.png)
 
 Maybe in word clouds we can see some changes due to natural events
 
-## All of SB
+### All of SB
 
-## By area
+### By area
 
-# Sentiment Analysis
+## Sentiment Analysis
 
 
 # Lessons learned

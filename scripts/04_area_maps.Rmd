@@ -98,7 +98,7 @@ cpad_nature_count <- cpad_select %>%
   mutate(pt_count = lengths(st_intersects(cpad_select, nature_df))) %>%
   filter(pt_count > 0)
 
-mapview(cpad_nature_count ,zcol = "pt_count")@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+mapview(cpad_nature_count, zcol = "pt_count")@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
 Some of these areas overlap with high tourist areas (e.g. the Zoo and Wharf). Let's look at the content of these tweets to see how often tweets coming from these locations are nature-based or not.
@@ -106,32 +106,30 @@ Some of these areas overlap with high tourist areas (e.g. the Zoo and Wharf). Le
 # Compare occurrence of nature vs non-nature based tweets
 
 ```{r}
+nature_tweets <- nature_df %>%
+  filter(nature_word == 1)
 non_nature_tweets <- nature_df %>% 
   filter(nature_word == 0)
 
 cpad_all_count <- cpad_select %>%
-  mutate(nature_count = lengths(st_intersects(cpad_select, nature_df)),
+  mutate(total_tweets = lengths(st_intersects(cpad, nature_df)),
+         nature_count = lengths(st_intersects(cpad_select, nature_tweets)),
          non_nature_count = lengths(st_intersects(cpad_select, non_nature_tweets))) %>%
   rowwise() %>%
-  mutate(
-         ratio = nature_count/non_nature_count,
+  mutate(ratio = nature_count/non_nature_count,
          prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
   filter(!is.na(ratio)) %>%
   mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
   st_set_geometry("geometry")
 ```
 
-**There is no site with less than `r min(cpad_all_count$prop)*100`% of tweets being nature-based.**
-
-```{r}
-mapview(cpad_all_count, zcol = "prop")
-```
 
 The highest ratio of nature tweets to non-nature takes place at `r filter(cpad_all_count, ratio == max(cpad_all_count$ratio))$SITE_NAME`.
 
 ```{r}
-mapview(cpad_all_count, zcol = "ratio")
+mapview(cpad_all_count %>% select(prop, ratio, total_tweets), burst = TRUE, hide = TRUE)@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
+
 
 Let's look at the top 20 most popular sites
 
@@ -303,7 +301,7 @@ tourists_prop <- ggplot(top_20_tourist, aes(x = reorder(SITE_NAME, count), fill 
 tourists_prop
 ```
 
-Areas with at least 50 tweets.
+Areas with at least 25 tweets.
 
 ```{r, message = FALSE, warning= FALSE}
 pyramid_df <- cpad_users %>%
@@ -313,7 +311,7 @@ pyramid_df <- cpad_users %>%
   group_by(SITE_NAME) %>%
   mutate(total = sum(count)) %>%
   ungroup() %>%
-  filter(total > 49) %>%
+  filter(total > 24) %>%
   mutate(count = ifelse(user_type == "local", -1*count, count),
          prop = ifelse(tweet_type == "non_nature_count", NA, prop))
 
