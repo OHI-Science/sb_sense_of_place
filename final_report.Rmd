@@ -64,6 +64,13 @@ kable(sample_n(tweet_data %>% select(-tweet_id, -user_id, -geo_type, -geo_coordi
 
 The spatial distribution of tweets highlights areas of higher population density and tourist areas in downtown Santa Barbara. There is a single coordinate that has over 11,000 tweets reported across all years. It is near De La Vina between Islay and Valerio. There is nothing remarkable about this site so I assume it is the default coordinate when people tag "Santa Barbara" generally. The coordinate is 34.4258, -119.714.
 
+```{r num_tweets_w_pic}
+
+
+
+```
+
+
 #### Interactive map with cluster markers
 
 As you zoom in on the map, clusters will disaggregate. You can click on blue points to see the tweet.
@@ -332,7 +339,7 @@ Not surprisingly the Santa Barbara Bowl has the most number of tweets, but only 
 
 ```{r, echo = FALSE}
 top_20 <- cpad_all_count %>%
-  group_by(SITE_NAME, MNG_AGNCY) %>%
+  group_by(SITE_NAME) %>%
   mutate(total_tweets = sum(nature_count, non_nature_count)) %>%
   ungroup() %>%
   filter(total_tweets > 1) %>%
@@ -411,8 +418,106 @@ ggplot(pyramid_df, aes(x = reorder(SITE_NAME, total), fill = tweet_type, y = cou
 ```
 
 
+### What sites have no nature-based tweets?
+
+```{r}
+cpad_users %>% 
+  filter(nature_count == 0) %>%
+  select(SITE_NAME) %>%
+  mapview(zcol = "SITE_NAME", legend = FALSE)
+```
+
+
+### What areas of Santa Barbara have over 50% nature-based tweets but are not within a designated CPAD area?
+
+We need to remove the tweets that are within CPAD areas first.
+
+```{r}
+hex_grid <- read_sf("data/sb_area_hexagons_larger.shp")
+
+#get all tweets not in a CPAD area
+tweets_nin_cpad <- nature_sf %>%
+  mutate(cpad = lengths(st_intersects(nature_sf, cpad))) %>%
+  filter(cpad == 0) %>%
+  select(-cpad)
+
+nature_tweets2 <- tweets_nin_cpad %>%
+  filter(nature_word == 1)
+non_nature_tweets2 <- tweets_nin_cpad %>% 
+  filter(nature_word == 0)
+
+#overlap the hex grids with tweets
+hex_tweet_counts <- hex_grid %>%
+  mutate(total_tweets = lengths(st_intersects(hex_grid, tweets_nin_cpad)),
+         nature_count = lengths(st_intersects(hex_grid, nature_tweets2)),
+         non_nature_count = lengths(st_intersects(hex_grid, non_nature_tweets2))) %>%
+  rowwise() %>%
+  mutate(ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
+  st_set_geometry("geometry")
+```
+
+
+```{r}
+m <- mapview(hex_tweet_counts, zcol = "prop") +
+  mapview(cpad, zcol = "SITE_NAME", legend = FALSE) 
+
+m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+```
+
+
 ----
 ## Time
+
+
+```{r, fig.width = 12, fig.height = 8}
+
+out <- data.frame()
+for(i in 2015:2019){
+  print(i)
+  yr_tweets <- nature_tweets %>% filter(Year == i)
+  yr_tweets_nn <- non_nature_tweets %>% filter(Year == i) #non-nature
+  
+cpad_by_year <- cpad %>%
+  st_set_geometry(NULL) %>%
+  mutate(nature_count = lengths(st_intersects(cpad, yr_tweets)),
+         non_nature_count = lengths(st_intersects(cpad, yr_tweets_nn))) %>%
+  rowwise() %>%
+  mutate(
+         ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count)),
+         year = i) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio))
+
+out <- rbind(out, cpad_by_year)
+
+}
+
+yrly_df <- out %>%
+  group_by(SITE_NAME) %>%
+  mutate(num_years = n()) %>%
+  ungroup() %>%
+  mutate(total_tweets = nature_count + non_nature_count)
+
+#remove sites with just one year of tweets
+
+ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop, color = SITE_NAME)) +
+  geom_path(aes(size = nature_count), lineend="round") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  facet_wrap(~SITE_NAME)
+
+ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop)) +
+  geom_col(aes(fill = total_tweets)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  facet_wrap(~SITE_NAME) +
+  labs(x = "",
+       y = "Proportion tweets nature-based")
+```
 
 ### Timeline of tweets
 

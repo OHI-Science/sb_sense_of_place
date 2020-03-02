@@ -1,0 +1,92 @@
+---
+title: "Clean CPAD data"
+author: "Jamie Afflerbach"
+date: "2/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(mapview)
+library(tidyverse)
+library(mapedit)
+library(sp)
+library(sf)
+library(leaflet)
+```
+
+Load california protected areas database
+```{r}
+cpad <- read_sf("../data/CPAD_2019a/CPAD_2019a_Holdings.shp") %>%
+  filter(COUNTY == "Santa Barbara") %>%
+  st_transform("+init=epsg:4326") %>%
+  st_crop(xmin = -119.5, xmax = -120.5, ymin = 33.88, ymax = 34.6)
+```
+
+Map of CPAD areas in Santa Barbara
+```{r}
+cpad_map <- mapview(cpad, zcol = "UNIT_NAME", legend = FALSE)
+cpad_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+```
+
+# Fix polygons
+
+Some of these polygons do not fully encompass the actual park or designated area. I use `mapedit` to expand the polygons. I did this for:
+
+- Carpinteria bluffs
+
+```{r mapedit_polygons}
+carp <- cpad %>%
+  filter(SITE_NAME == "Carpinteria Bluffs Public Open Space")
+# 
+# carp_fix <- mapview(carp, legend = FALSE) %>%
+#   editMap("carp")
+
+carp_done <- carp_fix$finished %>%
+  mutate(SITE_NAME = "Carpinteria Bluffs Public Open Space",
+         ACCESS_TYP = "Open Access",
+         HOLDING_ID = 2187) %>%
+  select(-X_leaflet_id, -feature_type)
+  
+```
+
+
+There are some issues with how some of these polygons are named. Most apparent is the three polygons with UNIT_NAME "Santa Barbara Maitime Musem". Aside from the typo, this name is assigned to the museum itself as well as the harbor and west beach.
+
+There are multiple polygons with the same site name (e.g. Douglas preserve, elings park, sb harbor). I combine those into one polygon here. I also fix some site names.
+
+```{r fix}
+cpad_select <- cpad %>%
+  select(HOLDING_ID, ACCESS_TYP, SITE_NAME) %>%
+  mutate(SITE_NAME = case_when(
+    HOLDING_ID == 1964 ~ "Santa Barbara Harbor",
+    HOLDING_ID == 1949 ~ "Santa Barbara Harbor",
+    HOLDING_ID == 1698 ~ "Santa Barbara Maritime Museum",
+    HOLDING_ID == 3284 ~ "Carrillo Recreation Center",
+    SITE_NAME == "El Capitán State Beach" ~ "El Capitan State Beach",
+    SITE_NAME == "Elings Park - Elings Park Foundation" ~ "Elings Park",
+    SITE_NAME == "Honda Valley Park - Community Environmental Council" ~ "Honda Valley Park",
+    HOLDING_ID %in% c(2039,2044) ~ "Blueberry Hill Neighborhood Park", 
+    TRUE ~ as.character(SITE_NAME)
+      )
+    ) %>%
+  rbind(carp_done) %>%
+  group_by(SITE_NAME) %>%
+  summarise() %>%
+  ungroup()
+```
+
+Apply a small buffer to try and capture tweets nearby but not overlapping. For example if you zoom in on Chase Palm Park, a lot of tweets clearly from the park are not captured in the current polygons.
+
+```{r}
+cpad_buffer <- cpad_select %>%
+  st_buffer(dist = .0001)
+  
+```
+
+
+```{r}
+#mapview(cpad_select, zcol = "SITE_NAME", legend = FALSE)
+write_sf(cpad_buffer, "../data/cpad_fixed.shp", driver = "ESRI Shapefile")
+```

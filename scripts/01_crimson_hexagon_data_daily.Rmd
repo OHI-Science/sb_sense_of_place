@@ -282,6 +282,16 @@ sb_county <- read_sf("../data/CA_Counties_TIGER2016.shp") %>%
 #   st_transform(4326)
 
 #write_sf(hex_grid, "../data/sb_area_hexagons.shp")
+
+# #create a larger hex grid
+# 
+# size <- 0.0025
+# hex_points <- sp::spsample(sb_county, type = "hexagonal", cellsize = size)
+# hex_grid <- sp::HexPoints2SpatialPolygons(hex_points, dx = size) %>%
+#   st_as_sf() %>%
+#   st_transform(4326)
+# 
+# write_sf(hex_grid, "../data/sb_area_hexagons_larger.shp")
 ```
 
 ### Interactive hex density

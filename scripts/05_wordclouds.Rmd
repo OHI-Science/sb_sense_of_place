@@ -19,50 +19,46 @@ library(wordcloud)
 library(tm)
 library(qdapRegex)     # Removing URLs
 library(tidytext)
+library(sf)
 ```
 
 Load data
 
 ```{r}
-
-data       <- read_csv("../data/geotagged_sb_tweets.csv") %>%
-  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
-  mutate(Year = as.numeric(Year)) %>%
-  separate(Day, into = c("Day", "Date"), sep = 4) %>%
-  separate(Date, into = c("Date", "Time"), sep = 7) %>%
-  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
-  separate(Date, into = c("Month", "Day"), sep = " ") %>%
-  mutate(Day = as.numeric(Day)) %>%
-  mutate(month_num = match(Month,month.abb)) %>%
-  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year),tryFormats = "%m/%d/%Y"))
+data  <- read_csv("../data/tweets_nature_categorized.csv")  %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>% 
+    st_as_sf(coords = c("lon", "lat")) %>%
+    st_set_crs("+init=epsg:4326")
 ```
 
 ```{r}
-tweets <- data %>%
-  select(Month, Day, Year, full_text, date, lat, lon)
+all_sb_tweets <- data %>%
+  select(full_text, date)  %>% 
+  st_set_geometry(NULL)
 ```
 
 
 ```{r}
-tweets$tweets_cleaned_text <- gsub("https\\S*", "", tweets$full_text) 
-tweets$tweets_cleaned_text <- gsub("\n", " ", tweets$tweets_cleaned_text)
-tweets$tweets_cleaned_text <- gsub("://t.co*", "", tweets$tweets_cleaned_text)
-tweets$tweets_cleaned_text <- gsub("@\\S*", "", tweets$tweets_cleaned_text) 
-tweets$tweets_cleaned_text <- gsub("amp", "", tweets$tweets_cleaned_text) 
-tweets$tweets_cleaned_text <- gsub("[\r\n]", "", tweets$tweets_cleaned_text)
-tweets$tweets_cleaned_text <- gsub("[[:punct:]]", "", tweets$tweets_cleaned_text)
-tweets$tweets_cleaned_text <- gsub("https?", "", tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("https\\S*", "", all_sb_tweets$full_text) 
+all_sb_tweets$tweets_cleaned_text <- gsub("\n", " ", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("://t.co*", "", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("@\\S*", "", all_sb_tweets$tweets_cleaned_text) 
+all_sb_tweets$tweets_cleaned_text <- gsub("amp", "", all_sb_tweets$tweets_cleaned_text) 
+all_sb_tweets$tweets_cleaned_text <- gsub("[\r\n]", "", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("[[:punct:]]", "", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("https?", "", all_sb_tweets$tweets_cleaned_text)
 
-
-tweets_words <-  tweets %>%
+all_sb_tweets_words <-  all_sb_tweets %>%
  select(tweets_cleaned_text) %>%
  unnest_tokens(word, tweets_cleaned_text) %>%
  anti_join(get_stopwords(language = "en", source = "smart")) #remove stop words using the "smart" source of 571 words
 
 #additional words I'm seeing that aren't in the smart list
-unwanted_words <- c("im", "ive", "1", "2", "youre", "dont", "3", "4", "5")
+unwanted_words <- c("im", "ive", "1", "2", "youre", "dont", "3", "4", "5", "youll")
 
-words <- tweets_words %>% count(word, sort=TRUE) %>%
+all_sb_words <- all_sb_tweets_words %>% count(word, sort=TRUE) %>%
   filter(!word %in% unwanted_words) #remove unwanted words
 ```
 
@@ -72,10 +68,63 @@ Wordcloud
 set.seed(1234) # for reproducibility 
 
 png("../figs/wordcloud_top_100_all_sb.png", width=4, height=3, units="in", res=300)
-wordcloud(words = words$word, freq = words$n, min.freq = 1,           
-          max.words=80, random.order=FALSE, rot.per=0.35,            
+wordcloud(words = all_sb_words$word, freq = all_sb_words$n, min.freq = 1,           
+          max.words=100, random.order=FALSE, rot.per=0.35,            
           colors=brewer.pal(8, "Dark2"))
 
 ```
 
-Do this by areas within Santa Barbara. 
+Do this by CPAD areas within Santa Barbara. 
+
+```{r}
+cpad <- read_sf("../data/cpad_fixed.shp")
+
+cpad_tweets <- st_intersection(data, cpad)
+
+sites <- unique(cpad_tweets$SITE_NAME)
+
+out <- data.frame()
+
+for(i in 1:length(sites)){
+  
+  site <- sites[i]
+  df   <- cpad_tweets %>%
+           filter(SITE_NAME == site) %>%
+    st_set_geometry(NULL)
+
+df$tweets_cleaned_text <- gsub("https\\S*", "", df$full_text) 
+df$tweets_cleaned_text <- gsub("\n", " ", df$tweets_cleaned_text)
+df$tweets_cleaned_text <- gsub("://t.co*", "", df$tweets_cleaned_text)
+df$tweets_cleaned_text <- gsub("@\\S*", "", df$tweets_cleaned_text) 
+df$tweets_cleaned_text <- gsub("amp", "", df$tweets_cleaned_text) 
+df$tweets_cleaned_text <- gsub("[\r\n]", "", df$tweets_cleaned_text)
+df$tweets_cleaned_text <- gsub("[[:punct:]]", "", df$tweets_cleaned_text)
+df$tweets_cleaned_text <- gsub("https?", "", df$tweets_cleaned_text)
+  
+df_words <-  df %>%
+ select(tweets_cleaned_text) %>%
+ unnest_tokens(word, tweets_cleaned_text) %>%
+ anti_join(get_stopwords(language = "en", source = "smart")) #remove stop words using the "smart" source of 571 words
+
+df_words_10 <- df_words %>% 
+  count(word, sort=TRUE) %>%
+  filter(!word %in% unwanted_words) %>% #remove unwanted words
+  mutate(Site = site)
+
+out <- rbind(df_words_10[1:10,], out)
+}
+
+
+
+ggplot(out, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(y = "Number of mentions",
+       x = "",
+       title = paste0("Top 10 words from ", site)) +
+  facet_wrap(~Site)
+
+```
+
+
