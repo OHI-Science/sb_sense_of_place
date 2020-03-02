@@ -65,9 +65,23 @@ kable(sample_n(tweet_data %>% select(-tweet_id, -user_id, -geo_type, -geo_coordi
 The spatial distribution of tweets highlights areas of higher population density and tourist areas in downtown Santa Barbara. There is a single coordinate that has over 11,000 tweets reported across all years. It is near De La Vina between Islay and Valerio. There is nothing remarkable about this site so I assume it is the default coordinate when people tag "Santa Barbara" generally. The coordinate is 34.4258, -119.714.
 
 ```{r num_tweets_w_pic}
+tweet_picture_counts <- tweet_data %>%
+  filter(!str_detect(full_text, '^"')) %>%
+  count(picture = ifelse(str_detect(full_text, "t.co"),
+                         "Picture/link", "No picture/link")) %>%
+  mutate(prop = round(n/sum(n)*100, 0))
+```
 
+Given that the tweet dataset is queried to just those that are geotagged - I hypothesize that most of these tweets have a picture or a link to an instagram post. We can detect links by looking for "t.co" in the tweet which is a twitter URL for a separate webpage. These are often twitter or instagram photos but we can't be 100% certain.
 
+It looks like `r tweet_picture_counts[2,3]$prop`% of geotagged tweets contain a link or picture.
 
+```{r}
+ggplot(tweet_picture_counts, aes(x = picture, y = n, fill = picture)) +
+  geom_col() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(x = "", y = "")
 ```
 
 
@@ -105,6 +119,34 @@ log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes
 
 log_hex_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
+
+#### Timeline of tweets
+
+The number of geotagged tweets is going down over time. There is a significant drop in tweets around April 30, 2015.
+
+```{r}
+time_df <- tweet_data %>%
+  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
+  mutate(Year = as.numeric(Year)) %>%
+  separate(Day, into = c("Day", "Date"), sep = 4) %>%
+  separate(Date, into = c("Date", "Time"), sep = 7) %>%
+  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
+  select(-Extra, -tweet_id, -language, -geo_type, -Day) %>%
+  separate(Date, into = c("Month", "Day"), sep = " ") %>%
+  mutate(Day = as.numeric(Day)) %>%
+  mutate(month_num = match(Month,month.abb)) %>%
+  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year), tryFormats = "%m/%d/%Y")) %>%
+  group_by(date) %>%
+  summarize(count = n())
+
+ggplot(time_df, aes(x = date, y = count)) +
+  geom_line() +
+  geom_smooth() +
+  theme_minimal() +
+  labs(x = "",
+       y = "Number of geotagged tweets")
+```
+
 
 ## Tourists and locals
 
@@ -225,7 +267,7 @@ nature_df_user_type <- nature_df %>%
 
 Not surprisingly there are less nature-based tweets than nature-based. Of all `r nrow(data)` tweets, `r nrow(nature_df %>% filter(nature_word == 1))/nrow(data)*100`% are nature-based.
 
-Of local tweeters, `r nrow(nature_df %>% filter(nature_word == 1, user_type == "local"))/nrow(nature_df %>% filter(user_type == "local"))*100`% of tweets are nature-based. Of tourists, `r nrow(nature_df %>% filter(nature_word == 1, user_type == "tourist"))/nrow(nature_df %>% filter(user_type == "tourist"))*100`% are nature-based.
+Of local tweeters, `r round(nrow(nature_df %>% filter(nature_word == 1, user_type == "local"))/nrow(nature_df %>% filter(user_type == "local"))*100, 0)`% of tweets are nature-based. Of tourists, `r round(nrow(nature_df %>% filter(nature_word == 1, user_type == "tourist"))/nrow(nature_df %>% filter(user_type == "tourist"))*100,0)`% are nature-based.
 
 ```{r, echo = FALSE}
 ggplot(nature_df_user_type, aes(x = tweet_type, fill = tweet_type)) +
@@ -253,11 +295,6 @@ cpad_map <- mapview(cpad, zcol = "SITE_NAME", legend = FALSE)
 cpad_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
-
-**How many tweets come from these areas?**
-
-Count how many points in each polygon (all types of tweets not just nature based)
-
 ```{r, echo = FALSE}
 nature_sf <- nature_df %>%
     mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
@@ -274,9 +311,7 @@ nature_sf <- nature_df %>%
         ))
 ```
 
-Some of these areas overlap with high tourist areas (e.g. the Bowl, Zoo and Wharf). Let's look at the content of these tweets to see how often tweets coming from these locations are nature-based or not.
-
-**Compare occurrence of nature vs non-nature based tweets**
+#### Compare occurrence of nature vs non-nature based tweets
 
 ```{r, echo = FALSE}
 nature_tweets <- nature_sf %>%
@@ -302,7 +337,7 @@ The highest ratio of nature tweets to non-nature takes place at `r filter(cpad_a
 mapview(cpad_all_count %>% select(prop, ratio, total_tweets), burst = TRUE, hide = TRUE)@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
-Let's look at the top 20 most popular sites
+We can look at the top 20 most popular tweeted-from sites. The green highlighted portion represents nature-based tweets. The number indicates what percentage of all tweets are nature-based at each site.
 
 ```{r}
 top_20 <- cpad_all_count %>%
@@ -335,7 +370,9 @@ ggplot(top_20, aes(x = reorder(SITE_NAME, count), fill = tweet_type, y = count))
   ylim(0, 1510)
 ```
 
-Not surprisingly the Santa Barbara Bowl has the most number of tweets, but only half are nature based (the view is great!). If we just look at proportion of nature-based tweets we see a different ordering. I removed any places with just 1 tweet since it will skew results if that tweet happens to be nature-based (a total of 4 places).
+The Santa Barbara Harbor has the most number of tweets, followed by Manning Park. Interestingly, Manning Park seems to contain a default coordinate for the "Montecito, California" geotag.
+
+If we just look at proportion of nature-based tweets we see a different ordering. I removed any places with just 1 tweet since it will skew results if that tweet happens to be nature-based (a total of 4 places).
 
 ```{r, echo = FALSE}
 top_20 <- cpad_all_count %>%
@@ -358,7 +395,7 @@ ggplot(top_20, aes(x = reorder(SITE_NAME, prop), y = prop)) +
 ```
 
 
-**How does this differ across tourists and locals?**
+#### How does this differ across tourists and locals?
 
 ```{r}
 cpad_locals <- cpad %>%
@@ -430,7 +467,8 @@ cpad_users %>%
 
 ### What areas of Santa Barbara have over 50% nature-based tweets but are not within a designated CPAD area?
 
-We need to remove the tweets that are within CPAD areas first.
+The idea here is to use the data to identify places where the majority of tweet content is nature-based but it does not align within a designated area. This could be used to indicate places that maybe should be recognized or protected but currently aren't.
+
 
 ```{r}
 hex_grid <- read_sf("data/sb_area_hexagons_larger.shp")
@@ -454,7 +492,8 @@ hex_tweet_counts <- hex_grid %>%
   rowwise() %>%
   mutate(ratio = nature_count/non_nature_count,
          prop  = nature_count/sum(c(nature_count, non_nature_count))) %>%
-  filter(!is.na(ratio)) %>%
+  filter(!is.na(ratio),
+         prop >= 0.5) %>%
   mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio)) %>% 
   st_set_geometry("geometry")
 ```
@@ -469,14 +508,16 @@ m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 
 
 ----
+
 ## Time
 
+This chart shows all CPAD areas and the proportion of tweets that are nature-based. The total number of tweets is represented by the width of the line.
 
 ```{r, fig.width = 12, fig.height = 8}
 
 out <- data.frame()
 for(i in 2015:2019){
-  print(i)
+  
   yr_tweets <- nature_tweets %>% filter(Year == i)
   yr_tweets_nn <- non_nature_tweets %>% filter(Year == i) #non-nature
   
@@ -510,35 +551,78 @@ ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop, color = SITE_NAM
   theme(legend.position = "none") +
   facet_wrap(~SITE_NAME)
 
-ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop)) +
-  geom_col(aes(fill = total_tweets)) +
-  theme_minimal() +
-  theme(legend.position = "bottom") +
-  facet_wrap(~SITE_NAME) +
-  labs(x = "",
-       y = "Proportion tweets nature-based")
+# ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop)) +
+#   geom_col(aes(fill = total_tweets)) +
+#   theme_minimal() +
+#   theme(legend.position = "bottom") +
+#   facet_wrap(~SITE_NAME) +
+#   labs(x = "",
+#        y = "Proportion tweets nature-based")
 ```
 
-### Timeline of tweets
 
-Initial hypothesis was identifying spikes in nature-based tweets around three significant events:
-- Refugio oil spill in 2015
-- Thomas fire in 2017
-- Debris flow in 2018
 
 ## Word clouds
-top 100 words for locals vs tourist. And we could do this in space. At sterns wharf what are people tweeting about? At Elings, what are locals tweeting about?
+
+Top 100 words across all Santa Barbara geotagged tweets
 
 ![](figs/wordcloud_top_100_all_sb.png)
 
-Maybe in word clouds we can see some changes due to natural events
+The most popular 20 words by tourists and locals.
 
-### All of SB
+![](figs/top_20_words_by_user_type.png)
 
-### By area
+**ideas**
+- We could do this by CPAD area
+- could remove "santa barbara", "california", see if we can get a better sense of what people actually care about.
 
 ## Sentiment Analysis
 
+We can apply a sentiment analysis to the twitter data to try and understand patterns and trends in the general sentiment of tweets.
+
+This graph shows average daily scores over time. Above 0 is positive, below 0 is negative. We see that tweets are mostly positive and growing over time.
+
+```{r}
+avg_scores <- read_csv("data/avg_score_by_date_bing.csv")
+ggplot(avg_scores, aes(x = date, y = avg_score)) +
+  geom_line() +
+  geom_smooth() +
+  theme_minimal()
+```
+
+The top 10 positive and negative words found across all tweets. There are many more instances of the positive words than negative.
+
+![](figs/top10_pos_neg_words_sb.png)
+We see that genearlly "joy" and "positive" are the types of tweets we see most. 
+```{r}
+sentimentscores = read_csv("data/sentimentscores_all_sb.csv")
+
+#plotting the sentiments with scores
+ggplot(data = sentimentscores, aes(x = sentiment, y = Score)) +
+  geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  xlab("") +
+  ylab("scores") +
+  ggtitle("Sentiments of Santa Barbara tweets")
+```
+
+**ideas**  
+
+We could do this also just for nature-based tweets and within/outside of CPAD areas.
+
+```{r}
+
+```
+
+
+## Still to explore
+
+Do the above plot with proportion and tourists/locals. Need to account for big tweet drop in 2016.
+
+Assign each designated area to a location like coastal, urban, foothill, mountain and see if we see interesting trends across those. Expect - more tweets in coastal, urban. Maybe coastal and mountains have more nature-based vs urban and foothill.
+
+Look at where tourists or locals disproportionately tweet nature-based stuff more
 
 # Lessons learned
 
@@ -556,7 +640,6 @@ In a blog piece we can pose questions that we couldnâ€™t answer but stuff like â
 
 Could compare % nature based tweets in SB to other areas. If we did this across the whole state, what proportion% are nature based? Maybe on average its just 5%.
 
-
 Where and why do locals and tourists overlap in their use of area. SB seems to have a high alignment of tourists/locals, which may be helpful for local policy. Maybe places with distinct differences in how tourists/locals use places. 
 
 Look at cities of different coastal sizes rural - small town - urban - mega city. Could see how tourists/locals patterns differentiate across scale. 
@@ -568,3 +651,5 @@ In areas where we see both tourists and locals engaging, what characteristics do
 Quantifying transitions between rural to city. 
 
 # Talk about overall social media literature for conservation and how this project is similar/different and used lessons from those papers to guide this analysis.
+
+- most of the lit is used to look at tourist preferences

@@ -407,11 +407,3 @@ ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop)) +
   labs(x = "",
        y = "Proportion tweets nature-based")
 ```
-
-Do the above plot with proportion and tourists/locals. Need to account for big tweet drop in 2016.
-
-Assign each designated area to a location like coastal, urban, foothill, mountain and see if we see interesting trends across those. Expect - more tweets in coastal, urban. Maybe coastal and mountains have more nature-based vs urban and foothill.
-
-Look at sentiment of places over time, also over all sentiment of nature-based t weets over time.
-
-Look at where tourists or locals disproportionately tweet nature-based stuff more.
