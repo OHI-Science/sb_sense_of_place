@@ -51,6 +51,7 @@ num_month_tweets <- tweet_df %>%
   ungroup() 
 ```
 
+
 We have `r nrow(tweet_df)` tweets from `r length(unique(tweet_df$user_id))` people.
 
 What we really want to do is use the number of tweets in a month/year range to tell us whether or not someone is a local or tourist. We can do this across the entire dataset, and then compare to our user location designation to see how right or wrong we were.
@@ -68,15 +69,35 @@ tourist_local <- num_month_tweets %>%
   group_by(user_id, user_location) %>% 
   mutate(user_type = case_when(
     str_detect(tolower(user_location), paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito", "805", "gaviota", "ucsb"), collapse = '|')) ~ "local",
-    TRUE ~ "unknown")) %>%
+     TRUE ~ "unknown"))
+
+ggplot(tourist_local) +
+  geom_histogram(aes(num_unique_months_tweeted), bins = 12) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(0, 12, 1), lim = c(0, 12)) +
+  facet_wrap(~user_type)
+  labs(x = "Number of months tweeted in a year",
+       y = "Number of users",
+       title = "How many unique months are SB geotag tweeters tweeting?") 
+```
+
+Based on this lets stick with the 3 month threshold.
+
+```{r}
+tourist_local <- num_month_tweets %>%
+  group_by(user_id, user_location) %>% 
   mutate(user_type = case_when(
-    user_type == "unknown" & num_unique_months_tweeted > 2 ~ "local", #if someone has tweeted in at least 6 months of a single year we will id them as local
+    str_detect(tolower(user_location), paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito", "805", "gaviota", "ucsb"), collapse = '|')) ~ "local",
+     TRUE ~ "unknown")) %>%
+  mutate(user_type = case_when(
+    user_type == "unknown" & num_unique_months_tweeted > 2 ~ "local", #if someone has tweeted in at least 2 months of a single year we will id them as local
     user_type == "unknown" & num_unique_months_tweeted <= 2 ~ "tourist",
     TRUE ~ as.character(user_type)
   )) %>%
   select(-num_unique_months_tweeted, -Year) %>%
   distinct()
 ```
+
 
 The way we assigned "tourist" or "local" by year gives us some cases where in one year. For those users that were identified as a tourist in one year and a local in another, we will default and call them all local. 
 
@@ -124,29 +145,55 @@ hex_grid <- read_sf("../data/sb_area_hexagons.shp")
 locals <- tweet_df_w_user_type_sf %>% filter(user_type == "local")
 tourists <- tweet_df_w_user_type_sf %>% filter(user_type == "tourist")
 
-hex_tweet_count_locals <- hex_grid %>%
-  mutate(tweet_count = lengths(st_intersects(hex_grid, locals)),
-         log_tweet_count = log(tweet_count))
-
-hex_tweet_count_tourists <- hex_grid %>%
-  mutate(tweet_count = lengths(st_intersects(hex_grid, tourists)),
-         log_tweet_count = log(tweet_count))
+hex_tweet_count <- hex_grid %>%
+  mutate(local_tweet_count = lengths(st_intersects(hex_grid, locals)),
+         local_log_tweet_count = log(local_tweet_count),
+         tourist_tweet_count = lengths(st_intersects(hex_grid, tourists))) %>%
+  mutate(
+         tourist_log_tweet_count = log(tourist_tweet_count),
+         total = local_tweet_count + tourist_tweet_count,
+         diff = local_tweet_count - tourist_tweet_count)
 
 #color palettes
 blues = colorRampPalette(c("#DEEBF7", "#08306B"))
 reds = colorRampPalette(c("#FEE0D2", "#67000D"))
 
 
-mapview(hex_tweet_count_locals %>% filter(tweet_count > 0), 
-        zcol = "log_tweet_count", 
+mapview(hex_tweet_count %>% filter(local_tweet_count > 0), 
+        zcol = "local_log_tweet_count", 
         layer.name = "# tweets by locals (log)",
         col.regions = blues,
         alpha.regions = 0.5) + 
-  mapview(hex_tweet_count_tourists %>% filter(tweet_count > 0), 
-          zcol = "log_tweet_count", 
+  mapview(hex_tweet_count %>% filter(tourist_tweet_count > 0), 
+          zcol = "tourist_log_tweet_count", 
           layer.name = "# tweets by tourists (log)",
         col.regions = reds,
         alpha.regions = 0.5)
 ```
 
+
+## Difference map
+
+We want to know where tourists go that locals do not and vice versa.
+
+```{r}
+#where tourists go more
+t <- hex_tweet_count %>% 
+  filter(diff < 0) %>%
+  mutate(value = -1*diff,
+         log_value = log(value))
+
+l <- hex_tweet_count %>%
+  filter(diff > 0) %>%
+  mutate(log_value = log(diff))
+
+#map
+tl_map <- mapview(t, zcol = "log_value", layer.name = "Tourist preferred # tweets", 
+        col.regions = colorRampPalette(brewer.pal(9, "Purples")[4:9]), alpha.regions = 1) +
+  mapview(l, zcol = "log_value", layer.name = "Local preferred # tweets", 
+        col.regions = colorRampPalette(brewer.pal(9, "Oranges")[4:9]), alpha.regions = 1)
+
+tl_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+
+```
 

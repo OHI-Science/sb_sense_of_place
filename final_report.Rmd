@@ -20,6 +20,7 @@ library(kableExtra)
 library(sp)
 library(ggpol) #for the facet_share function
 library(grid) #for plot.margin
+library(RColorBrewer)
 
 tweet_data <- read_csv("data/geotagged_sb_tweets.csv")
 mapviewOptions(basemaps = c("CartoDB.Positron", "OpenStreetMap"))
@@ -164,7 +165,7 @@ tweet_data_users_sf <- tweet_data_users %>%
 
 There are `r nrow(filter(tweet_data_users, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_data_users, user_type == "local"))` tweets from locals.
 
-The following map shows tweet **log density** by locals (top - blue) and tourists (bottom - red).
+The following map shows areas that have more tweets from locals (orange) or tourists (purple). Note the values indicate the log of the absolute difference between number of tweets from each user group. If a hex is purple and has a value of 2.302585, this means there are 10 more tweets from tourists than locals at that location (log of 10 = 2.302585).
 
 ```{r, echo = FALSE}
 
@@ -172,34 +173,33 @@ hex_grid <- read_sf("data/sb_area_hexagons.shp")
 locals   <- tweet_data_users_sf %>% filter(user_type == "local")
 tourists <- tweet_data_users_sf %>% filter(user_type == "tourist")
 
-hex_tweet_count_locals <- hex_grid %>%
-  mutate(tweet_count = lengths(st_intersects(hex_grid, locals)),
-         log_tweet_count = log(tweet_count))
+hex_tweet_count <- hex_grid %>%
+  mutate(local_tweet_count = lengths(st_intersects(hex_grid, locals)),
+         local_log_tweet_count = log(local_tweet_count),
+         tourist_tweet_count = lengths(st_intersects(hex_grid, tourists))) %>%
+  mutate(
+         tourist_log_tweet_count = log(tourist_tweet_count),
+         total = local_tweet_count + tourist_tweet_count,
+         diff = local_tweet_count - tourist_tweet_count)
 
-hex_tweet_count_tourists <- hex_grid %>%
-  mutate(tweet_count = lengths(st_intersects(hex_grid, tourists)),
-         log_tweet_count = log(tweet_count))
 
-#color palettes
-blues = colorRampPalette(c("#DEEBF7", "#08306B"))
-reds = colorRampPalette(c("#FEE0D2", "#67000D"))
+#where tourists go more
+t <- hex_tweet_count %>% 
+  filter(diff < 0) %>%
+  mutate(value = -1*diff,
+         log_value = log(value))
 
-m1 <- mapview(hex_tweet_count_locals %>% filter(tweet_count > 0), 
-        zcol = "log_tweet_count", 
-        layer.name = "# tweets by locals (log)",
-        col.regions = blues,
-        alpha.regions = 0.9,
-        legend = FALSE)
-m2 <- mapview(hex_tweet_count_tourists %>% filter(tweet_count > 0), 
-          zcol = "log_tweet_count", 
-          layer.name = "# tweets by tourists (log)",
-        col.regions = reds,
-        alpha.regions = 0.9, 
-        legend = FALSE) 
+l <- hex_tweet_count %>%
+  filter(diff > 0) %>%
+  mutate(log_value = log(diff))
 
-m3 <- m1@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
-m4 <- m2@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
-sync(m3, m4, ncol = 1)
+#map
+tl_map <- mapview(t, zcol = "log_value", layer.name = "Tourist preferred # tweets", 
+        col.regions = colorRampPalette(brewer.pal(9, "Purples")[4:9]), alpha.regions = 1) +
+  mapview(l, zcol = "log_value", layer.name = "Local preferred # tweets", 
+        col.regions = colorRampPalette(brewer.pal(9, "Oranges")[4:9]), alpha.regions = 1)
+
+tl_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
 ## Nature-based tweets
