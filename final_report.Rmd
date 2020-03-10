@@ -19,8 +19,10 @@ library(leaflet)
 library(kableExtra)
 library(sp)
 library(ggpol) #for the facet_share function
-library(grid) #for plot.margin
+#library(grid) #for plot.margin
 library(RColorBrewer)
+library(ggrepel)
+library(patchwork)
 
 tweet_data <- read_csv("data/geotagged_sb_tweets.csv")
 mapviewOptions(basemaps = c("CartoDB.Positron", "OpenStreetMap"))
@@ -75,14 +77,14 @@ tweet_picture_counts <- tweet_data %>%
 
 Given that the tweet dataset is queried to just those that are geotagged - I hypothesize that most of these tweets have a picture or a link to an instagram post. We can detect links by looking for "t.co" in the tweet which is a twitter URL for a separate webpage. These are often twitter or instagram photos but we can't be 100% certain.
 
-It looks like `r tweet_picture_counts[2,3]$prop`% of geotagged tweets contain a link or picture.
+It looks like **`r tweet_picture_counts[2,3]$prop`%** of geotagged tweets contain a link or picture.
 
-```{r}
+```{r, fig.height = 3}
 ggplot(tweet_picture_counts, aes(x = picture, y = n, fill = picture)) +
   geom_col() +
   theme_minimal() +
   theme(legend.position = "none") +
-  labs(x = "", y = "")
+  labs(x = "", y = "Number of tweets")
 ```
 
 
@@ -90,7 +92,7 @@ ggplot(tweet_picture_counts, aes(x = picture, y = n, fill = picture)) +
 
 As you zoom in on the map, clusters will disaggregate. You can click on blue points to see the tweet.
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.width = 10}
 tweet_sf <- tweet_data %>%
   st_as_sf(coords = c("lon", "lat")) %>%
   st_set_crs(4326)
@@ -98,7 +100,7 @@ tweet_sf <- tweet_data %>%
 #map
 leaflet(tweet_data) %>%
   # Base groups
-  addProviderTiles(providers$CartoDB.Positron) %>%
+  addProviderTiles(providers$CartoDB.Positron, options = providerTileOptions(minZoom = 10)) %>%
   # Overlay groups %>%
     addCircleMarkers(data = tweet_data, lng = ~lon, lat = ~lat, popup = ~full_text,
                    radius = 3, stroke = FALSE, fillOpacity = 0.5, clusterOptions = markerClusterOptions())
@@ -108,7 +110,7 @@ leaflet(tweet_data) %>%
 
 This is log-transformed. 
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.width = 10}
 hex_grid <- read_sf("data/sb_area_hexagons.shp")
 
 hex_tweet_count <- hex_grid %>%
@@ -165,9 +167,9 @@ tweet_data_users_sf <- tweet_data_users %>%
 
 There are `r nrow(filter(tweet_data_users, user_type == "tourist"))` tweets from tourists and `r nrow(filter(tweet_data_users, user_type == "local"))` tweets from locals.
 
-The following map shows areas that have more tweets from locals (orange) or tourists (purple). Note the values indicate the log of the absolute difference between number of tweets from each user group. If a hex is purple and has a value of 2.302585, this means there are 10 more tweets from tourists than locals at that location (log of 10 = 2.302585).
+The following map shows areas that have more tweets from locals (orange) or tourists (purple). Note the values indicate the log10 of the absolute difference between number of tweets from each user group. If a hex is purple and has a value of 2, this means there are 100 times more tweets from tourists than locals at that location.
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.width = 10}
 
 hex_grid <- read_sf("data/sb_area_hexagons.shp")
 locals   <- tweet_data_users_sf %>% filter(user_type == "local")
@@ -187,11 +189,11 @@ hex_tweet_count <- hex_grid %>%
 t <- hex_tweet_count %>% 
   filter(diff < 0) %>%
   mutate(value = -1*diff,
-         log_value = log(value))
+         log_value = log10(value))
 
 l <- hex_tweet_count %>%
   filter(diff > 0) %>%
-  mutate(log_value = log(diff))
+  mutate(log_value = log10(diff))
 
 #map
 tl_map <- mapview(t, zcol = "log_value", layer.name = "Tourist preferred # tweets", 
@@ -206,13 +208,16 @@ tl_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 
 The full text of each tweet was analyzed to be either nature-based or not. We developed a coarse dictionary of words that indicate a nature-based tweet. These include natural features like ocean, coast, park, and works that indicate recreating (fishing, hiking, camping, etc.).
 
-**Note**
+**Note**  
 I had a hard time finding an ontology or lexicon that would fit this project. These are definitely skewed more towards nature and recreation rather than words like "home" or "connection".
 
 ```{r, echo = FALSE}
 dictionary <- read_csv("data/dictionary.csv")
 nature_df <- read_csv("data/tweets_nature_categorized.csv")
-dictionary$word
+
+#display <- dictionary
+kable(dictionary[order(dictionary$word),]) %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 11, fixed_thead = T)
 ```
 
 Let's look at some examples of what tweets qualified as "nature-based".
@@ -222,11 +227,55 @@ kable(sample_n(nature_df %>% filter(nature_word == 1) %>% select(date, full_text
   kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 11, fixed_thead = T)
 ```
 
+### Changes over time 
+
+All groups show increases in proportion of tweets that are nature based over time.
+
+```{r, fig.height = 4}
+nature_prop <- nature_df %>% 
+               group_by(date, nature_word) %>%
+               summarize(count = n()) %>%
+               ungroup() %>%
+               group_by(date) %>%
+               mutate(total = sum(count),
+                      nature_prop = (count/total)*100) %>%
+               filter(nature_word == 1) %>%
+               mutate(user_type = "all_tweets")
+
+nature_prop_t <- nature_df %>%
+               group_by(date, nature_word, user_type) %>%
+               summarize(count = n()) %>%
+               ungroup() %>%
+               group_by(date, user_type) %>%
+               mutate(total = sum(count),
+                      nature_prop = (count/total)*100) %>%
+               filter(nature_word == 1)
+
+combo <- bind_rows(nature_prop, nature_prop_t)
+
+
+labels <- data.frame(user_type = c("All tweets", "Tourists", "Locals"), 
+                     nature_prop = c(25.6, 36.8, 22.7)) %>%
+                     mutate(date = as.Date("2020-03-29"))
+
+
+ggplot(combo, aes(x = date, y = nature_prop, color = user_type)) +
+  geom_smooth(se = F) +
+  theme_minimal() +
+  labs(x = "",
+       y = "Percentage (%) of tweets nature based") +
+  theme(legend.position = "none") +
+  geom_text(data = labels, aes(x = date, y = nature_prop, label = user_type)) +
+  scale_x_date(expand = expand_scale(mult = c(0, 0.1))) +
+  scale_colour_manual(values = c("darkgreen","darkgreen", "purple","purple", "orange", "orange"),
+                      labels = c("All tweets", "Tourists", "Locals"))
+```
+
 ### Where are nature-based tweets?
 
 After identifying nature-based tweets we can take a look at where these tweets are coming from and compare to the general pattern of tweets. 
 
-```{r}
+```{r, fig.width = 10}
 nature_sf <- nature_df %>%
   st_as_sf(coords = c("lon", "lat")) %>%
   st_set_crs(4326)
@@ -265,7 +314,7 @@ nature_df_user_type <- nature_df %>%
         ))
 ```
 
-Not surprisingly there are less nature-based tweets than nature-based. Of all `r nrow(data)` tweets, `r nrow(nature_df %>% filter(nature_word == 1))/nrow(data)*100`% are nature-based.
+Not surprisingly there are less nature-based tweets than nature-based `r round(nrow(nature_df %>% filter(nature_word == 1))/nrow(nature_df)*100, 0)`% of all geo-tagged tweets are nature-based.
 
 Of local tweeters, `r round(nrow(nature_df %>% filter(nature_word == 1, user_type == "local"))/nrow(nature_df %>% filter(user_type == "local"))*100, 0)`% of tweets are nature-based. Of tourists, `r round(nrow(nature_df %>% filter(nature_word == 1, user_type == "tourist"))/nrow(nature_df %>% filter(user_type == "tourist"))*100,0)`% are nature-based.
 
@@ -295,7 +344,7 @@ cpad_map <- mapview(cpad, zcol = "SITE_NAME", legend = FALSE)
 cpad_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.width = 10}
 nature_sf <- nature_df %>%
     mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
     separate(coords, c("lat", "lon"), sep = ", ") %>%
@@ -313,7 +362,7 @@ nature_sf <- nature_df %>%
 
 #### Compare occurrence of nature vs non-nature based tweets
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.width = 10}
 nature_tweets <- nature_sf %>%
   filter(nature_word == 1)
 non_nature_tweets <- nature_sf %>% 
@@ -455,14 +504,6 @@ ggplot(pyramid_df, aes(x = reorder(SITE_NAME, total), fill = tweet_type, y = cou
 ```
 
 
-### What sites have no nature-based tweets?
-
-```{r}
-cpad_users %>% 
-  filter(nature_count == 0) %>%
-  select(SITE_NAME) %>%
-  mapview(zcol = "SITE_NAME", legend = FALSE)
-```
 
 
 ### What areas of Santa Barbara have over 50% nature-based tweets but are not within a designated CPAD area?
@@ -509,57 +550,6 @@ m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 
 ----
 
-## Time
-
-This chart shows all CPAD areas and the proportion of tweets that are nature-based. The total number of tweets is represented by the width of the line.
-
-```{r, fig.width = 12, fig.height = 8}
-
-out <- data.frame()
-for(i in 2015:2019){
-  
-  yr_tweets <- nature_tweets %>% filter(Year == i)
-  yr_tweets_nn <- non_nature_tweets %>% filter(Year == i) #non-nature
-  
-cpad_by_year <- cpad %>%
-  st_set_geometry(NULL) %>%
-  mutate(nature_count = lengths(st_intersects(cpad, yr_tweets)),
-         non_nature_count = lengths(st_intersects(cpad, yr_tweets_nn))) %>%
-  rowwise() %>%
-  mutate(
-         ratio = nature_count/non_nature_count,
-         prop  = nature_count/sum(c(nature_count, non_nature_count)),
-         year = i) %>%
-  filter(!is.na(ratio)) %>%
-  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio))
-
-out <- rbind(out, cpad_by_year)
-
-}
-
-yrly_df <- out %>%
-  group_by(SITE_NAME) %>%
-  mutate(num_years = n()) %>%
-  ungroup() %>%
-  mutate(total_tweets = nature_count + non_nature_count)
-
-#remove sites with just one year of tweets
-
-ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop, color = SITE_NAME)) +
-  geom_path(aes(size = nature_count), lineend="round") +
-  theme_minimal() +
-  theme(legend.position = "none") +
-  facet_wrap(~SITE_NAME)
-
-# ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop)) +
-#   geom_col(aes(fill = total_tweets)) +
-#   theme_minimal() +
-#   theme(legend.position = "bottom") +
-#   facet_wrap(~SITE_NAME) +
-#   labs(x = "",
-#        y = "Proportion tweets nature-based")
-```
-
 
 
 ## Word clouds
@@ -574,21 +564,123 @@ The most popular 20 words by tourists and locals.
 
 **ideas**
 - We could do this by CPAD area
-- could remove "santa barbara", "california", see if we can get a better sense of what people actually care about.
 
 ## Sentiment Analysis
 
 We can apply a sentiment analysis to the twitter data to try and understand patterns and trends in the general sentiment of tweets.
 
-This graph shows average daily scores over time. Above 0 is positive, below 0 is negative. We see that tweets are mostly positive and growing over time.
+The top graph shows the total number of geotagged tweets, which has gone down over time across tourists and locals.
 
-```{r}
-avg_scores <- read_csv("data/avg_score_by_date_bing.csv")
-ggplot(avg_scores, aes(x = date, y = avg_score)) +
+The bottom graph shows average daily sentiment scores over time. Above 0 is positive, below 0 is negative. We see that tweets are mostly positive and growing over time.
+
+#### Changes over time {.tabset .tabset-fade}
+
+##### All tweets 
+```{r, fig.height = 5}
+#sentiment score over time for all tweets
+avg_scores <- read_csv("data/avg_score_by_date_bing.csv") %>%
+  mutate(type = "all_tweets")
+
+p1 <- ggplot(time_df, aes(x = date, y = count)) +
   geom_line() +
   geom_smooth() +
-  theme_minimal()
+  theme_classic() +
+  labs(x = "",
+       y = "Count",
+       title = "Number of geotagged tweets in Santa Barbara")
+
+p2 <- ggplot(data = avg_scores, aes(x = date, y = avg_score)) +
+  geom_smooth(se = F, color = "darkred") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  labs(y = "Score", x= "", title = "Average sentiment of tweets over time")
+
+p1 + p2 + plot_layout(ncol=1)
 ```
+
+##### Tourists
+```{r, fig.height = 5}
+#sentiment scores for tourists - nature and nonnature
+t_n <- read_csv("data/avg_score_by_date_tourist_nature_bing.csv") %>%
+  mutate(type = "tourist, nature")
+t_nn <- read_csv("data/avg_score_by_date_tourist_non_nature_bing.csv") %>%
+  mutate(type = "tourist, non-nature")
+combo <- bind_rows(t_n, t_nn)
+
+
+labels <- data.frame(type = c("Nature based", "Non-nature based"), 
+                     avg_score = c(0.68, 0.48)) %>%
+                     mutate(date = as.Date("2019-11-15"))
+
+tourist_tweet_count <- tweet_data_users %>% 
+                        filter(user_type == "tourist") %>%
+                        group_by(date) %>%
+                        summarize(count = n())
+
+p1 <- ggplot(tourist_tweet_count, aes(x = date, y = count)) +
+  geom_line() +
+  geom_smooth() +
+  theme_classic() +
+  labs(x = "",
+       y = "Count",
+       title = "Number of geotagged tweets in Santa Barbara")
+
+
+p2 <- ggplot(data = combo, aes(x = date, y = avg_score, color = type)) +
+  geom_smooth(se = F) +
+  theme_classic() +
+  theme(legend.position = "none") +
+  labs(y = "Score", x= "", title = "Average sentiment of tweets over time") +
+  geom_text(data = labels, aes(x = date, y = avg_score, label = type), size = 3.5) +
+  scale_x_date(expand = expand_scale(mult = c(0, 0.1))) +
+  scale_colour_manual(values = c("darkgreen","gray30", "darkgreen", "gray50"),
+                      labels = c("Nature-based", "Non nature-based"))
+p1 + p2 + plot_layout(ncol=1)
+
+```
+
+##### Locals
+```{r, fig.height = 5}
+
+#sentiment scores for tourists - nature and nonnature
+l_n <- read_csv("data/avg_score_by_date_local_nature_bing.csv") %>%
+  mutate(type = "local, nature")
+l_nn <- read_csv("data/avg_score_by_date_local_non_nature_bing.csv") %>%
+  mutate(type = "local, non-nature")
+combo <- bind_rows(l_n, l_nn)
+
+
+labels <- data.frame(type = c("Nature based", "Non-nature based"), 
+                     avg_score = c(0.56, 0.76)) %>%
+                     mutate(date = as.Date("2019-11-30"))
+
+local_tweet_count <- tweet_data_users %>% 
+                        filter(user_type == "local") %>%
+                        group_by(date) %>%
+                        summarize(count = n())
+
+p1 <- ggplot(local_tweet_count, aes(x = date, y = count)) +
+  geom_line() +
+  geom_smooth(se = F) +
+  theme_classic() +
+  labs(x = "",
+       y = "Count",
+       title = "Number of geotagged tweets in Santa Barbara")
+
+p2 <- ggplot(data = combo, aes(x = date, y = avg_score, color = type)) +
+  geom_smooth(se = F) +
+  theme_classic() +
+  theme(legend.position = "none") +
+  labs(y = "Score", x= "", title = "Average sentiment of tweets over time") +
+  geom_text(data = labels, aes(x = date, y = avg_score, label = type), size = 3.5) +
+  scale_x_date(expand = expand_scale(mult = c(0, 0.1))) +
+  scale_colour_manual(values = c("darkgreen","gray30", "darkgreen", "gray50"),
+                      labels = c("Nature-based", "Non nature-based"))
+
+p1 + p2 + plot_layout(ncol=1)
+```
+
+## {-}
 
 The top 10 positive and negative words found across all tweets. There are many more instances of the positive words than negative.
 
@@ -653,3 +745,78 @@ Quantifying transitions between rural to city.
 # Talk about overall social media literature for conservation and how this project is similar/different and used lessons from those papers to guide this analysis.
 
 - most of the lit is used to look at tourist preferences
+
+
+
+** Ideas from hacky hour**
+
+"Do tourists and locals interact with nature differently?"
+
+Was there a time when twitter changed how geotag? does that explain any decrease in geotagging tweets?
+
+The ^ carrot might force string to start with the word rather than find just that word.
+
+Hex assessemnt for % nature tweets
+
+Julien - TFIDF for twitter words. https://en.wikipedia.org/wiki/Tf–idf
+
+Could look at seasons. Do we see terms associated with fire/drought/rain? 
+
+Look at retweets/favorites for nature-based? Could use them as weighting factor.
+
+Do the sentiment time analysis by positives only then negatives only to help see if the thomas fire or debris flow are showing up
+
+# Appendix
+
+Additional figures to supplement the analysis.
+
+### What sites have no nature-based tweets?
+
+```{r}
+cpad_users %>% 
+  filter(nature_count == 0) %>%
+  select(SITE_NAME) %>%
+  mapview(zcol = "SITE_NAME", legend = FALSE)
+```
+
+
+This chart shows all CPAD areas and the proportion of tweets that are nature-based. The total number of tweets is represented by the width of the line.
+
+```{r, fig.width = 12, fig.height = 8}
+
+out <- data.frame()
+for(i in 2015:2019){
+  
+  yr_tweets <- nature_tweets %>% filter(Year == i)
+  yr_tweets_nn <- non_nature_tweets %>% filter(Year == i) #non-nature
+  
+cpad_by_year <- cpad %>%
+  st_set_geometry(NULL) %>%
+  mutate(nature_count = lengths(st_intersects(cpad, yr_tweets)),
+         non_nature_count = lengths(st_intersects(cpad, yr_tweets_nn))) %>%
+  rowwise() %>%
+  mutate(
+         ratio = nature_count/non_nature_count,
+         prop  = nature_count/sum(c(nature_count, non_nature_count)),
+         year = i) %>%
+  filter(!is.na(ratio)) %>%
+  mutate(ratio = ifelse(is.infinite(ratio), nature_count, ratio))
+
+out <- rbind(out, cpad_by_year)
+
+}
+
+yrly_df <- out %>%
+  group_by(SITE_NAME) %>%
+  mutate(num_years = n()) %>%
+  ungroup() %>%
+  mutate(total_tweets = nature_count + non_nature_count)
+
+#remove sites with just one year of tweets
+
+ggplot(yrly_df %>% filter(num_years>1), aes(x = year, y = prop, color = SITE_NAME)) +
+  geom_path(aes(size = nature_count), lineend="round") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  facet_wrap(~SITE_NAME)
+```

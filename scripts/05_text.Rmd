@@ -1,0 +1,719 @@
+---
+title: "05: Text analysis"
+author: "Jamie Montgomery"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 2
+---
+
+# Summary
+
+```{r setup, include=FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+library(RColorBrewer)
+library(tidyverse)
+library(wordcloud)
+library(tm)
+library(qdapRegex)     # Removing URLs
+library(tidytext)
+library(sf)
+library(textdata)
+library(cowplot)
+library(syuzhet) # for get_nrc_sentiment
+```
+
+# Analysis
+
+## Setup
+Load data
+
+```{r}
+data  <- read_csv("../data/tweets_nature_categorized.csv")  %>%
+    mutate(coords = gsub("\\)|c\\(", "", geo_coordinates)) %>%
+    separate(coords, c("lat", "lon"), sep = ", ") %>%
+    mutate_at(c("lon", "lat"), as.numeric) %>% 
+    st_as_sf(coords = c("lon", "lat")) %>%
+    st_set_crs("+init=epsg:4326")
+```
+
+```{r}
+all_sb_tweets <- data %>%
+  select(full_text, date, user_type, nature_word)  %>% 
+  st_set_geometry(NULL)
+```
+
+
+```{r}
+all_sb_tweets$tweets_cleaned_text <- gsub("https\\S*", "", all_sb_tweets$full_text) 
+all_sb_tweets$tweets_cleaned_text <- gsub("\n", " ", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("://t.co*", "", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("@\\S*", "", all_sb_tweets$tweets_cleaned_text) 
+all_sb_tweets$tweets_cleaned_text <- gsub("amp", "", all_sb_tweets$tweets_cleaned_text) 
+all_sb_tweets$tweets_cleaned_text <- gsub("[\r\n]", "", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("[[:punct:]]", "", all_sb_tweets$tweets_cleaned_text)
+all_sb_tweets$tweets_cleaned_text <- gsub("https?", "", all_sb_tweets$tweets_cleaned_text)
+
+all_sb_tweets_words <-  all_sb_tweets %>%
+ select(tweets_cleaned_text) %>%
+ unnest_tokens(word, tweets_cleaned_text) %>%
+ anti_join(get_stopwords(language = "en", source = "smart")) #remove stop words using the "smart" source of 571 words
+
+#additional words I'm seeing that aren't in the smart list.
+unwanted_words <- c("im", "ive", "1", "2", "youre", "dont", "3", "4", "5", "youll", "santa", "barbara", "california", "santabarbara")
+
+all_sb_words <- all_sb_tweets_words %>% count(word, sort=TRUE) %>%
+  filter(!word %in% unwanted_words) #remove unwanted words
+```
+
+# Results 
+
+## Wordclouds
+
+Top 100 words for all Santa Barbara tweets
+
+```{r}
+
+png("../figs/wordcloud_top_100_all_sb.png")
+
+wordcloud(words = all_sb_words$word, freq = all_sb_words$n, min.freq = 1,           
+          max.words=100, random.order=FALSE, rot.per=0.35,            
+          colors=brewer.pal(8, "Dark2"))
+```
+
+Most popular 20 words for tourists and locals
+
+```{r}
+tourists <-  all_sb_tweets %>%
+  filter(user_type == "tourist") %>%
+  select(tweets_cleaned_text) %>%
+  unnest_tokens(word, tweets_cleaned_text) %>%
+  anti_join(get_stopwords(language = "en", source = "smart")) #remove stop words using the "smart" source of 571 words
+
+tourist_words <- tourists %>% 
+  count(word, sort=TRUE) %>%
+  filter(!word %in% unwanted_words) %>% #remove unwanted words
+  mutate(type = "tourist")%>%
+  arrange(desc(n)) %>%
+  slice(1:20)
+
+locals <-  all_sb_tweets %>%
+  filter(user_type == "local") %>%
+  select(tweets_cleaned_text) %>%
+  unnest_tokens(word, tweets_cleaned_text) %>%
+  anti_join(get_stopwords(language = "en", source = "smart")) #remove stop words using the "smart" source of 571 words
+
+local_words <- locals %>% 
+  count(word, sort=TRUE) %>%
+  filter(!word %in% unwanted_words) %>% #remove unwanted words
+  mutate(type = "local") %>%
+  arrange(desc(n)) %>%
+  slice(1:20)
+
+combo <- bind_rows(tourist_words, local_words)
+
+
+png("../figs/top_20_words_by_user_type.png", width=4, height=3, units="in", res=300)
+ggplot(combo, aes(x = reorder(word, n), y = n, fill = type)) +
+  geom_col() +
+  coord_flip() +
+  facet_wrap(~type, scales = "free") +
+  theme_minimal() +
+  theme(legend.position =  "none") +
+  labs(x = "", y = "")
+
+```
+
+----
+
+## Sentiment analysis
+
+Most common positive/negative words across entire Santa Barbara dataset
+
+```{r}
+sb_sent <- all_sb_tweets_words %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+pos <- sb_sent %>%
+  filter(sentiment == "positive") %>%
+  arrange(desc(n)) %>%
+  slice(1:10)
+
+neg <- sb_sent %>%
+  filter(sentiment == "negative") %>%
+  arrange(desc(n)) %>%
+  slice(1:10) 
+
+p1 <- ggplot(pos, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkblue") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Positive",
+       x = "",
+       y = "Count")
+p2 <- ggplot(neg, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkred") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Negative",
+       x = "",
+       y = "Count")
+
+png("../figs/top10_pos_neg_words_sb.png", width=4, height=3, units="in", res=300)
+plot_grid(p1, p2)
+```
+
+**Tourists**
+
+Top positive and negative words from tourists
+```{r}
+t_sent <-  all_sb_tweets %>%
+   filter(user_type == "tourist") %>%
+   select(tweets_cleaned_text) %>%
+   unnest_tokens(word, tweets_cleaned_text) %>%
+   anti_join(get_stopwords(language = "en", source = "smart")) %>%
+   inner_join(get_sentiments("bing")) %>%
+   count(word, sentiment, sort = TRUE) %>%
+   ungroup()
+
+pos <- t_sent %>%
+  filter(sentiment == "positive") %>%
+  arrange(desc(n)) %>%
+  slice(1:10)
+
+neg <- t_sent %>%
+  filter(sentiment == "negative") %>%
+  arrange(desc(n)) %>%
+  slice(1:10) 
+
+p1 <- ggplot(pos, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkblue") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Positive",
+       x = "",
+       y = "Count")
+p2 <- ggplot(neg, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkred") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Negative",
+       x = "",
+       y = "Count")
+
+png("../figs/top10_pos_neg_words_tourists.png", width=4, height=3, units="in", res=300)
+plot_grid(p1, p2)
+```
+
+**Locals**
+
+Top positive and negative words from locals
+```{r}
+l_sent <- all_sb_tweets %>%
+   filter(user_type == "local") %>%
+   select(tweets_cleaned_text) %>%
+   unnest_tokens(word, tweets_cleaned_text) %>%
+   anti_join(get_stopwords(language = "en", source = "smart"))%>%
+   inner_join(get_sentiments("bing")) %>%
+   count(word, sentiment, sort = TRUE) %>%
+   ungroup()
+
+pos <- l_sent %>%
+  filter(sentiment == "positive") %>%
+  arrange(desc(n)) %>%
+  slice(1:10)
+
+neg <- l_sent %>%
+  filter(sentiment == "negative") %>%
+  arrange(desc(n)) %>%
+  slice(1:10) 
+
+p1 <- ggplot(pos, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkblue") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Positive",
+       x = "",
+       y = "Count")
+p2 <- ggplot(neg, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkred") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Negative",
+       x = "",
+       y = "Count")
+
+png("../figs/top10_pos_neg_words_locals.png", width=4, height=3, units="in", res=300)
+plot_grid(p1, p2)
+```
+
+### Nature based tweets
+
+```{r}
+nat_sent <- all_sb_tweets %>%
+   filter(nature_word == 1) %>%
+   select(tweets_cleaned_text) %>%
+   unnest_tokens(word, tweets_cleaned_text) %>%
+   anti_join(get_stopwords(language = "en", source = "smart")) %>%
+   inner_join(get_sentiments("bing")) %>%
+   count(word, sentiment, sort = TRUE) %>%
+   ungroup()
+
+pos <- nat_sent %>%
+  filter(sentiment == "positive") %>%
+  arrange(desc(n)) %>%
+  slice(1:10)
+
+neg <- nat_sent %>%
+  filter(sentiment == "negative") %>%
+  arrange(desc(n)) %>%
+  slice(1:10) 
+
+p1 <- ggplot(pos, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkblue") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Positive",
+       x = "",
+       y = "Count")
+p2 <- ggplot(neg, aes(x = reorder(word, n), y = n)) +
+  geom_col(fill = "darkred") +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Negative",
+       x = "",
+       y = "Count")
+
+png("../figs/top10_pos_neg_words_nature.png", width=4, height=3, units="in", res=300)
+plot_grid(p1, p2)
+```
+
+----
+
+### Most common tweet emotions
+
+```{r, eval = F}
+all_sb_text <- data$full_text
+mysentiment <- get_nrc_sentiment((all_sb_text))
+ 
+ #calculationg total score for each sentiment
+ sentimentscores <- data.frame(colSums(mysentiment[,]))
+ 
+ names(sentimentscores) <- "Score"
+ sentimentscores <- cbind("sentiment" = rownames(sentimentscores), sentimentscores)
+ rownames(sentimentscores) <- NULL
+
+write.csv(sentimentscores, file = "../data/sentimentscores_all_sb.csv")
+```
+
+```{r}
+sentimentscores = read_csv("../data/sentimentscores_all_sb.csv")
+
+#plotting the sentiments with scores
+ggplot(data = sentimentscores, aes(x = sentiment, y = Score)) +
+  geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  xlab("") +
+  ylab("scores") +
+  ggtitle("Sentiments of Santa Barbara tweets")
+```
+
+### Nature-based
+
+```{r, eval = F}
+nature_text <- data %>% filter(nature_word == 1) %>% pull(full_text)
+ mysentiment <- get_nrc_sentiment((nature_text))
+
+## calculationg total score for each sentiment
+sentimentscores <- data.frame(colSums(mysentiment[,]))
+
+names(sentimentscores) <- "Score"
+sentimentscores <- cbind("sentiment" = rownames(sentimentscores), sentimentscores)
+rownames(sentimentscores) <- NULL
+
+write.csv(sentimentscores, file = "../data/sentimentscores_nature.csv")
+```
+
+```{r}
+sentimentscores = read_csv("../data/sentimentscores_nature.csv")
+
+#plotting the sentiments with scores
+ggplot(data = sentimentscores, aes(x = sentiment, y = Score)) +
+  geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  xlab("") +
+  ylab("scores") +
+  ggtitle("Sentiments of nature-based tweets")
+```
+
+### Tourists
+```{r, eval = F}
+tourist_text <- data %>% filter(user_type == "tourist") %>% pull(full_text)
+ mysentiment <- get_nrc_sentiment((tourist_text))
+
+## calculationg total score for each sentiment
+sentimentscores <- data.frame(colSums(mysentiment[,]))
+
+names(sentimentscores) <- "Score"
+sentimentscores <- cbind("sentiment" = rownames(sentimentscores), sentimentscores)
+rownames(sentimentscores) <- NULL
+
+write.csv(sentimentscores, file = "../data/sentimentscores_tourist.csv")
+```
+
+```{r}
+sentimentscores = read_csv("../data/sentimentscores_tourist.csv")
+
+#plotting the sentiments with scores
+ggplot(data = sentimentscores, aes(x = sentiment, y = Score)) +
+  geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  xlab("") +
+  ylab("scores") +
+  ggtitle("Sentiments of tourist tweets")
+```
+
+### Locals
+```{r, eval = F}
+local_text <- data %>% filter(user_type == "local") %>% pull(full_text)
+ mysentiment <- get_nrc_sentiment((local_text))
+
+## calculationg total score for each sentiment
+sentimentscores <- data.frame(colSums(mysentiment[,]))
+
+names(sentimentscores) <- "Score"
+sentimentscores <- cbind("sentiment" = rownames(sentimentscores), sentimentscores)
+rownames(sentimentscores) <- NULL
+
+write.csv(sentimentscores, file = "../data/sentimentscores_local.csv")
+```
+
+```{r}
+sentimentscores = read_csv("../data/sentimentscores_local.csv")
+
+#plotting the sentiments with scores
+ggplot(data = sentimentscores, aes(x = sentiment, y = Score)) +
+  geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  xlab("") +
+  ylab("scores") +
+  ggtitle("Sentiments of locals tweets")
+```
+
+### Positive/negative scores over time
+
+```{r}
+sentiment_bing <- function(twt){
+  #Step 1; perform basic text cleaning (on the tweet)
+  twt_tbl = tibble(text = twt) %>% 
+    mutate(
+      stripped_text = gsub("http\\S+", "", text)
+    ) %>%
+    unnest_tokens(word, stripped_text) %>%
+    anti_join(stop_words) %>%
+    inner_join(get_sentiments("bing")) %>%
+    count(word, sentiment, sort = TRUE) %>%
+    ungroup() %>%
+    ## Create a column "score", that assigns a -1 to all negative words, and 1 to all positive words
+    mutate(
+      score = case_when(
+        sentiment == "negative" ~ n*(-1),
+        sentiment == "positive" ~ n*1)
+      )
+  #Calculate total score
+  sent_score <- case_when(
+    nrow(twt_tbl) == 0 ~ 0, #if no words, score is 0
+    nrow(twt_tbl) >0 ~ sum(twt_tbl$score) #otherwise, sum up pos/neg
+  )
+  #This is to keep track of which tweets contained no words at all from bing list
+  zero.type <- case_when(
+    nrow(twt_tbl) == 0 ~ "Type 1", #type 1: no words at all, zero = no
+    nrow(twt_tbl) > 0 ~ "Type 2" #Type 2: zero means sum of words = 0
+  )
+  
+  list(score = sent_score, type = zero.type, twt_tbl = twt_tbl)
+}
+```
+
+2. over time
+
+Apply the function over time and get average score. On average scores are always positive, and are growing more positive over time.
+
+All sb tweet scores
+```{r, eval = F}
+dates <- unique(all_sb_tweets$date)
+out <- data.frame()
+
+for(i in 1:length(unique(all_sb_tweets$date))){
+  print(i)
+  ymd <- dates[i]
+  sbdf <- all_sb_tweets %>%
+    filter(date == ymd)
+
+a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+b <- tibble(
+    score = unlist(map(a, 'score')),
+    type = unlist(map(a, 'type'))) %>%
+    mutate(date = ymd,
+           avg_score = mean(score)) %>%
+  select(date, avg_score) %>%
+  distinct()
+
+out <- bind_rows(out, b)
+}
+
+write_csv(out, "../data/avg_score_by_date_bing.csv")
+```
+
+Nature based scores
+```{r, eval = F}
+
+ dates <- unique(all_sb_tweets%>%filter(nature_word == 1) %>% pull(date))
+ out <- data.frame()
+
+ for(i in 1:length(dates)){
+   print(i)
+   ymd <- dates[i]
+   sbdf <- all_sb_tweets %>%
+     filter(date == ymd,
+            nature_word == 1)
+
+ a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+ b <- tibble(
+     score = unlist(map(a, 'score')),
+     type = unlist(map(a, 'type'))) %>%
+     mutate(date = ymd,
+            avg_score = mean(score)) %>%
+   select(date, avg_score) %>%
+   distinct()
+
+ out <- bind_rows(out, b)
+ }
+
+write_csv(out, "../data/avg_score_by_date_nature_bing.csv")
+```
+
+```{r}
+avg_scores <- read_csv("../data/avg_score_by_date_bing.csv") %>%
+  mutate(type = "all_tweets")
+avg_scores_n <- read_csv("../data/avg_score_by_date_nature_bing.csv") %>%
+  mutate(type = "nature tweets")
+combo <- bind_rows(avg_scores, avg_scores_n)
+```
+
+```{r}
+ggplot(combo, aes(x = date, y = avg_score, color = type)) +
+  geom_smooth() +
+  theme_minimal()
+```
+
+
+Tourist vs local
+
+```{r, eval = F}
+
+ dates <- unique(all_sb_tweets%>%filter(user_type == "local") %>% pull(date))
+ out <- data.frame()
+
+ for(i in 1:length(dates)){
+   #print(i)
+   ymd <- dates[i]
+   sbdf <- all_sb_tweets %>%
+     filter(date == ymd,
+            user_type == "local")
+
+ a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+ b <- tibble(
+     score = unlist(map(a, 'score')),
+     type = unlist(map(a, 'type'))) %>%
+     mutate(date = ymd,
+            avg_score = mean(score)) %>%
+   select(date, avg_score) %>%
+   distinct()
+
+ out <- bind_rows(out, b)
+ }
+
+write_csv(out, "../data/avg_score_by_date_local_bing.csv")
+```
+
+```{r, eval = F}
+
+ dates <- unique(all_sb_tweets%>%filter(user_type == "tourist") %>% pull(date))
+ out <- data.frame()
+
+ for(i in 1:length(dates)){
+   print(i)
+   ymd <- dates[i]
+   sbdf <- all_sb_tweets %>%
+     filter(date == ymd,
+            user_type == "tourist")
+
+ a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+ b <- tibble(
+     score = unlist(map(a, 'score')),
+     type = unlist(map(a, 'type'))) %>%
+     mutate(date = ymd,
+            avg_score = mean(score)) %>%
+   select(date, avg_score) %>%
+   distinct()
+
+ out <- bind_rows(out, b)
+ }
+
+write_csv(out, "../data/avg_score_by_date_tourist_bing.csv")
+```
+
+```{r}
+t <- read_csv("../data/avg_score_by_date_tourist_bing.csv") %>%
+  mutate(type = "tourist")
+l <- read_csv("../data/avg_score_by_date_local_bing.csv") %>%
+  mutate(type = "local")
+c <- bind_rows(t,l)
+
+
+ggplot(c, aes(x = date, y = avg_score, color = type)) +
+  geom_smooth(se = F) +
+  theme_minimal()
+```
+
+What if we look at the four user types
+
+```{r, eval = F}
+
+ dates <- unique(all_sb_tweets%>%filter(user_type == "tourist" & nature_word == 1) %>% pull(date))
+ out <- data.frame()
+
+ for(i in 1:length(dates)){
+   ymd <- dates[i]
+   sbdf <- all_sb_tweets %>%
+     filter(date == ymd,
+            user_type == "tourist" & nature_word == 1)
+
+ a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+ b <- tibble(
+     score = unlist(map(a, 'score')),
+     type = unlist(map(a, 'type'))) %>%
+     mutate(date = ymd,
+            avg_score = mean(score)) %>%
+   select(date, avg_score) %>%
+   distinct()
+
+ out <- bind_rows(out, b)
+ }
+
+write_csv(out, "../data/avg_score_by_date_tourist_nature_bing.csv")
+```
+
+
+```{r, eval = F}
+
+ dates <- unique(all_sb_tweets%>%filter(user_type == "tourist" & nature_word == 0) %>% pull(date))
+ out <- data.frame()
+
+ for(i in 1:length(dates)){
+   ymd <- dates[i]
+   sbdf <- all_sb_tweets %>%
+     filter(date == ymd,
+            user_type == "tourist" & nature_word == 0)
+
+ a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+ b <- tibble(
+     score = unlist(map(a, 'score')),
+     type = unlist(map(a, 'type'))) %>%
+     mutate(date = ymd,
+            avg_score = mean(score)) %>%
+   select(date, avg_score) %>%
+   distinct()
+
+ out <- bind_rows(out, b)
+ }
+
+write_csv(out, "../data/avg_score_by_date_tourist_non_nature_bing.csv")
+```
+
+```{r, eval = F}
+
+ dates <- unique(all_sb_tweets%>%filter(user_type == "local" & nature_word == 1) %>% pull(date))
+ out <- data.frame()
+
+ for(i in 1:length(dates)){
+   ymd <- dates[i]
+   sbdf <- all_sb_tweets %>%
+     filter(date == ymd,
+            user_type == "local" & nature_word == 1)
+
+ a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+ b <- tibble(
+     score = unlist(map(a, 'score')),
+     type = unlist(map(a, 'type'))) %>%
+     mutate(date = ymd,
+            avg_score = mean(score)) %>%
+   select(date, avg_score) %>%
+   distinct()
+
+ out <- bind_rows(out, b)
+ }
+
+write_csv(out, "../data/avg_score_by_date_local_nature_bing.csv")
+```
+
+```{r, eval = F}
+
+ dates <- unique(all_sb_tweets%>%filter(user_type == "local" & nature_word == 0) %>% pull(date))
+ out <- data.frame()
+
+ for(i in 1:length(dates)){
+   ymd <- dates[i]
+   sbdf <- all_sb_tweets %>%
+     filter(date == ymd,
+            user_type == "local" & nature_word == 0)
+
+ a <- lapply(sbdf$tweets_cleaned_text, function(x){sentiment_bing(x)})
+
+ b <- tibble(
+     score = unlist(map(a, 'score')),
+     type = unlist(map(a, 'type'))) %>%
+     mutate(date = ymd,
+            avg_score = mean(score)) %>%
+   select(date, avg_score) %>%
+   distinct()
+
+ out <- bind_rows(out, b)
+ }
+
+write_csv(out, "../data/avg_score_by_date_local_non_nature_bing.csv")
+```
+
+```{r}
+t_n <- read_csv("../data/avg_score_by_date_tourist_nature_bing.csv") %>%
+  mutate(type = "tourist, nature")
+t_nn <- read_csv("../data/avg_score_by_date_tourist_non_nature_bing.csv") %>%
+  mutate(type = "tourist, non-nature")
+l_n <- read_csv("../data/avg_score_by_date_local_nature_bing.csv") %>%
+  mutate(type = "local, nature")
+l_nn <- read_csv("../data/avg_score_by_date_local_non_nature_bing.csv") %>%
+  mutate(type = "local, non-nature")
+
+all <- bind_rows(t_n, t_nn, l_n, l_nn)
+
+ggplot(all, aes(x = date, y = avg_score, color = type)) +
+  geom_smooth(se=F) +
+  theme_minimal()
+```
+

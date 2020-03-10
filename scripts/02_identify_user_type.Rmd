@@ -181,11 +181,11 @@ We want to know where tourists go that locals do not and vice versa.
 t <- hex_tweet_count %>% 
   filter(diff < 0) %>%
   mutate(value = -1*diff,
-         log_value = log(value))
+         log_value = log10(value))
 
 l <- hex_tweet_count %>%
   filter(diff > 0) %>%
-  mutate(log_value = log(diff))
+  mutate(log_value = log10(diff))
 
 #map
 tl_map <- mapview(t, zcol = "log_value", layer.name = "Tourist preferred # tweets", 
