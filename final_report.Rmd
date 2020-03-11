@@ -32,15 +32,38 @@ mapviewOptions(basemaps = c("CartoDB.Positron", "OpenStreetMap"))
 
 Project summary
 
-Goals
-- 
-- 
+### Goals  
+- Test the feasibility of analyzing location-based social media data to address questions about the scale and context of people’s sense of place
+- Conduct at least one of these analyses for Santa Barbara
+- Produce a research plan and objectives for a larger project, informed by the results of this proof of concept project, as a way to gauge interest and feasibility of pursuing additional phases of the project.
+
+### Proposed approach
+- Examine data availability and accessibility from social media platforms
+- Decide on two possible geographies of interest, informed by data availability
+- Extract geotagged data for each geography over a determined period of time. This is dependent on data availability but ideally we’d have data over a few years.
+- Apply existing methods to reveal patterns of sense of place 
+- Analyze data for potential drivers (i.e., variables from the local context that reveal why a place is important) and interactions (e.g., connections between places)
+- Communicate results through a blog post and across social media platforms
+- Produce a proposal for next steps if this Proof of Concept proves a larger, more robust project is feasible
+
+### Analysis summary
+- Roughly **80,000 geotagged tweets** were collected for Santa Barbara from January 1, 2015 to December 31, 2019
+- Tourists and locals were defined using a two-step process
+- Nature-based tweets were identified using text detection
 - 
 
-Findings
+## Findings
+- Tourists tweet more about nature than locals
+- spatial patterns on use
+
+## Takeaways
+- Social media data is difficult to access for academic research. This data was only available through a UCSB Library partnership with Crimson Hexagon, but still required significant time investment to retrieve and get in a usable format
+- 
+- We are not pursuing a larger project, but have identified multiple avenues for further research. Project findings will be published in a blog post and shared broadly via social media.
 
 
-# Analysis & findings
+
+# Analysis
 
 ### Data Overview
 
@@ -48,7 +71,7 @@ Findings
 
 Twitter data was obtained freely through a partnership between UCSB Library and Crimson Hexagon. Before downloading, the data was queried to meet the following conditions:
 
-1. Tweet came from the Santa Barbara area (add more details about how CH applies the location query)
+1. Tweet came from the Santa Barbara area
 2. Only original tweets (no retweets)
 3. Date was marked between January 1, 2015 and December 31, 2019
 
@@ -100,7 +123,7 @@ tweet_sf <- tweet_data %>%
 #map
 leaflet(tweet_data) %>%
   # Base groups
-  addProviderTiles(providers$CartoDB.Positron, options = providerTileOptions(minZoom = 10)) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
   # Overlay groups %>%
     addCircleMarkers(data = tweet_data, lng = ~lon, lat = ~lat, popup = ~full_text,
                    radius = 3, stroke = FALSE, fillOpacity = 0.5, clusterOptions = markerClusterOptions())
@@ -125,7 +148,7 @@ log_hex_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 
 #### Timeline of tweets
 
-The number of geotagged tweets is going down over time. There is a significant drop in tweets around April 30, 2015.
+The number of geotagged tweets is going down over time. There is a significant drop in tweets at the end of April, 2015. It seems this is due "a change in Twitter’s ‘post Tweet’ user-interface design results in fewer Tweets being geo-tagged" ( [source](https://developer.twitter.com/en/docs/tweets/data-dictionary/guides/tweet-timeline)).
 
 ```{r}
 time_df <- tweet_data %>%
@@ -214,10 +237,7 @@ I had a hard time finding an ontology or lexicon that would fit this project. Th
 ```{r, echo = FALSE}
 dictionary <- read_csv("data/dictionary.csv")
 nature_df <- read_csv("data/tweets_nature_categorized.csv")
-
-#display <- dictionary
-kable(dictionary[order(dictionary$word),]) %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 11, fixed_thead = T)
+dictionary$word
 ```
 
 Let's look at some examples of what tweets qualified as "nature-based".
@@ -282,14 +302,14 @@ nature_sf <- nature_df %>%
 
 hex_tweet_count_nature <- hex_grid %>%
   mutate(tweet_count = lengths(st_intersects(hex_grid, nature_sf %>% filter(nature_word == 1))),
-         log_tweet_count = log(tweet_count))
+         log_tweet_count = log10(tweet_count))
 
 #color palettes
 greens = colorRampPalette(c("#E5F5E0", "#00441B"))
 
 m <- mapview(hex_tweet_count_nature %>% filter(tweet_count > 0), 
         zcol = "log_tweet_count", 
-        layer.name = "# Nature tweets (log)")
+        layer.name = "# Nature tweets (log10)")
         #col.regions = greens) 
 
 m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
@@ -421,27 +441,6 @@ ggplot(top_20, aes(x = reorder(SITE_NAME, count), fill = tweet_type, y = count))
 
 The Santa Barbara Harbor has the most number of tweets, followed by Manning Park. Interestingly, Manning Park seems to contain a default coordinate for the "Montecito, California" geotag.
 
-If we just look at proportion of nature-based tweets we see a different ordering. I removed any places with just 1 tweet since it will skew results if that tweet happens to be nature-based (a total of 4 places).
-
-```{r, echo = FALSE}
-top_20 <- cpad_all_count %>%
-  group_by(SITE_NAME) %>%
-  mutate(total_tweets = sum(nature_count, non_nature_count)) %>%
-  ungroup() %>%
-  filter(total_tweets > 1) %>%
-  st_set_geometry(NULL) %>%
-  arrange(-prop) %>%
-  slice(1:20) 
-
-ggplot(top_20, aes(x = reorder(SITE_NAME, prop), y = prop)) +
-  geom_bar(stat = "identity", fill = "darkgreen") +
-  theme_minimal() +
-  coord_flip() +
-  labs(x = "",
-       y = "Proportion of tweets that are nature-based",
-       title = "Top 20 sites with highest proportion of nature-based tweets") +
-  theme(plot.title = element_text(hjust = 4)) 
-```
 
 
 #### How does this differ across tourists and locals?
@@ -748,27 +747,46 @@ Quantifying transitions between rural to city.
 
 
 
-** Ideas from hacky hour**
+### Ideas from hacky hour
 
 "Do tourists and locals interact with nature differently?"
 
-Was there a time when twitter changed how geotag? does that explain any decrease in geotagging tweets?
-
-The ^ carrot might force string to start with the word rather than find just that word.
-
-Hex assessemnt for % nature tweets
-
-Julien - TFIDF for twitter words. https://en.wikipedia.org/wiki/Tf–idf
+Hex assessment for % nature tweets
 
 Could look at seasons. Do we see terms associated with fire/drought/rain? 
 
-Look at retweets/favorites for nature-based? Could use them as weighting factor.
-
 Do the sentiment time analysis by positives only then negatives only to help see if the thomas fire or debris flow are showing up
+
+Map of most popular words in a location?
+
+Static dot map of tourists/locals like Eric Fischer
 
 # Appendix
 
 Additional figures to supplement the analysis.
+
+
+If we just look at proportion of nature-based tweets we see a different ordering. I removed any places with just 1 tweet since it will skew results if that tweet happens to be nature-based (a total of 4 places).
+
+```{r, echo = FALSE}
+top_20 <- cpad_all_count %>%
+  group_by(SITE_NAME) %>%
+  mutate(total_tweets = sum(nature_count, non_nature_count)) %>%
+  ungroup() %>%
+  filter(total_tweets > 1) %>%
+  st_set_geometry(NULL) %>%
+  arrange(-prop) %>%
+  slice(1:20) 
+
+ggplot(top_20, aes(x = reorder(SITE_NAME, prop), y = prop)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  theme_minimal() +
+  coord_flip() +
+  labs(x = "",
+       y = "Proportion of tweets that are nature-based",
+       title = "Top 20 sites with highest proportion of nature-based tweets") +
+  theme(plot.title = element_text(hjust = 4)) 
+```
 
 ### What sites have no nature-based tweets?
 
