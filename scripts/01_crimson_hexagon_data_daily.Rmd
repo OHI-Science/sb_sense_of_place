@@ -182,9 +182,23 @@ tweet_data <- all_df %>%
     separate(coords, c("lat", "lon"), sep = ", ") %>%
     mutate_at(c("lon", "lat"), as.numeric) %>%
    filter(lat >=33.88 & lat <= 34.6,
-          lon <= -119.5 & lon >= -120.5)
+          lon <= -119.5 & lon >= -120.5) %>%
+  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
+  mutate(Year = as.numeric(Year)) %>%
+  separate(Day, into = c("Day", "Date"), sep = 4) %>%
+  separate(Date, into = c("Date", "Time"), sep = 7) %>%
+  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
+  select(-Extra, -language, -geo_type, -Day) %>%
+  separate(Date, into = c("Month", "Day"), sep = " ") %>%
+  mutate(Day = as.numeric(Day)) %>%
+  mutate(month_num = match(Month,month.abb)) %>%
+  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year), tryFormats = "%m/%d/%Y"))
 
 write_csv(tweet_data, "../data/geotagged_sb_tweets.csv")
+
+#remove tweets from Jan-Apr 2015 because of the Twitter user interface change
+tweet_data_sub <- tweet_data %>% filter(date > "2015-04-28")
+write_csv(tweet_data_sub, "../data/geotagged_sb_tweets_post_apr_2015.csv") 
 ```
 
 # Map tweets
@@ -194,7 +208,7 @@ write_csv(tweet_data, "../data/geotagged_sb_tweets.csv")
 Turn the `tweet_df_w_user_type` data frame into a spatial object.
 
 ```{r}
-tweet_data <- read_csv("../data/geotagged_sb_tweets.csv")
+tweet_data <- read_csv("../data/geotagged_sb_tweets_post_apr_2015.csv")
 
 tweet_sf <- tweet_data %>%
   st_as_sf(coords = c("lon", "lat")) %>%
@@ -339,6 +353,23 @@ delavina_tweets <- tweet_data %>%
 kable(sample_n(delavina_tweets, 10)) %>%
   kable_styling(bootstrap_options = c("striped", "condensed"), font_size = 10, fixed_thead = T)
 ```
+
+----
+
+
+In mid-2019, Twitter removed the ability to precisely identify your location in a tweet. I want to see the time frame for most of these tweets. If the majority are in the later half of 2019, it might be worth it to remove those tweets...
+
+```{r}
+check_geo <- tweet_data  %>%
+  filter(geo_coordinates == "c(34.4258, -119.714)") %>%
+  group_by(date) %>%
+  summarize(count = n())
+
+ggplot(check_geo, aes(x = date, y = count)) +
+  geom_line() +
+  geom_smooth()
+```
+It doesn't look like a significant dropoff in 2019, infact there are so few at the beginning of the time series I wonder if they implemented that default coordinate later on.
 
 Look at the log of tweet count.
 

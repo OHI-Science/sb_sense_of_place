@@ -75,6 +75,15 @@ cpad_nature_count <- cpad %>%
 mapview(cpad_nature_count, zcol = "pt_count")@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
+Save a datafile that identifies the CPAD area for each tweet
+
+```{r}
+tweets_cpad <- st_intersection(nature_df, cpad)
+
+write_sf(tweets_cpad, "../data/tweets_in_cpad_areas.shp")
+```
+
+
 Some of these areas overlap with high tourist areas (e.g. the Zoo and Wharf). Let's look at the content of these tweets to see how often tweets coming from these locations are nature-based or not.
 
 # Compare occurrence of nature vs non-nature based tweets
@@ -109,7 +118,7 @@ m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```
 
 
-Let's look at the top 20 most popular sites
+Let's look at the top 20 most popular sites. Names in **bold** indicate over 50% of tweets are nature-based
 
 ```{r}
 top_20 <- cpad_all_count %>%
@@ -136,7 +145,8 @@ ggplot(top_20, aes(x = reorder(SITE_NAME, count), fill = tweet_type, y = count))
        title = "Top 20 most tweeted from protected areas* in Santa Barbara") +
   scale_fill_manual(values = c("darkgreen", "gray"), labels = c("Nature-based", "Other")) +
   theme(legend.position = "none",
-        plot.title = element_text(hjust = 3.3)) +
+        plot.title = element_text(hjust = 3.3),
+        axis.text.y = element_text(face = rev(c('plain', 'bold', 'plain', 'plain', 'bold', 'bold', 'bold', 'plain', 'plain', 'bold','bold','bold','bold','bold','bold','bold','bold','plain','bold','bold')))) +
     geom_text(aes(SITE_NAME, y = count, label = prop, fill = NULL), 
               data = top_20_prop, hjust = -0.05, size = 3) +
   ylim(0, 1510)
@@ -304,6 +314,28 @@ ggplot(pyramid_df, aes(x = reorder(SITE_NAME, total), fill = tweet_type, y = cou
   labs(x=NULL,y=NULL)
 
 ggsave("../figs/pyramid_plot_num_tweets_per_area.png")
+```
+
+Scatterplot of this same data
+
+```{r}
+scatter_df <- pyramid_df %>%
+  select(SITE_NAME, prop, user_type, tweet_type, total) %>%
+  filter(tweet_type == "nature_count") %>%
+  pivot_wider(names_from = user_type, values_from = prop) %>%
+  mutate(
+    label = ifelse(
+      SITE_NAME %in% c("Arroyo Burro Beach County Park", "Leadbetter Beach", "Douglas Family Reserve", "Rattlesnake Canyon Park", "Los Padres National Forest", "Mission Park", "Alameda Park","Cachuma Lake Recreation Area", "Laurel Canyon Reservoir", "Twin Lakes Golf Course"), as.character(SITE_NAME), ""),
+    fill = ifelse(label == "", 0, 1))
+
+ggplot(scatter_df, aes(x = local, y = tourist)) +
+  geom_point(aes(color = fill, size = total)) +
+  geom_abline(color = "gray") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  geom_text_repel(aes(label = label), size = 2.85) +
+  labs(x = "Locals", y = "Tourists", title = "Proportion of nature-based tweets by locals and tourists \nat Santa Barbara protected areas")
+
 ```
 
 

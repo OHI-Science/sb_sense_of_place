@@ -68,6 +68,12 @@ cpad_select <- cpad %>%
     SITE_NAME == "Elings Park - Elings Park Foundation" ~ "Elings Park",
     SITE_NAME == "Honda Valley Park - Community Environmental Council" ~ "Honda Valley Park",
     HOLDING_ID %in% c(2039,2044) ~ "Blueberry Hill Neighborhood Park", 
+    SITE_NAME == "Carpinteria Salt Marsh Reserve - UC Natural Reserve" ~ "Carpinteria Salt Marsh Reserve",
+    SITE_NAME == "cemetery name unknown 2" ~ "Santa Barbara Cemetery",
+    SITE_NAME == "Montecity Country Club" ~ "Montecito Country Club",
+    SITE_NAME == "Winchester I Park" ~ "Winchester I Open Space",
+    SITE_NAME == "Stonebridge" ~ "Stonebridge Park",
+    SITE_NAME == "Lake Los Carneros Park" ~ "Lake Los Carneros Natural and Historical Preserve",
     TRUE ~ as.character(SITE_NAME)
       )
     ) %>%
@@ -90,3 +96,4 @@ cpad_buffer <- cpad_select %>%
 #mapview(cpad_select, zcol = "SITE_NAME", legend = FALSE)
 write_sf(cpad_buffer, "../data/cpad_fixed.shp", driver = "ESRI Shapefile")
 ```
+

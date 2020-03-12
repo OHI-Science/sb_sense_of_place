@@ -33,17 +33,7 @@ Think of another way to identify tourists and locals. Using [Eric Fisher's metho
 
 
 ```{r}
-tweet_df <- read_csv("../data/geotagged_sb_tweets.csv") %>%
-  separate(created_at, into = c("Day", "Year"), sep = 26) %>%
-  mutate(Year = as.numeric(Year)) %>%
-  separate(Day, into = c("Day", "Date"), sep = 4) %>%
-  separate(Date, into = c("Date", "Time"), sep = 7) %>%
-  separate(Time, into = c("Time", "Extra"), sep = 9) %>%
-  select(-Extra, -tweet_id, -language, -geo_type, -Day) %>%
-  separate(Date, into = c("Month", "Day"), sep = " ") %>%
-  mutate(Day = as.numeric(Day)) %>%
-  mutate(month_num = match(Month,month.abb)) %>%
-  mutate(date = as.Date(paste0(month_num, "/", Day, "/",Year), tryFormats = "%m/%d/%Y"))
+tweet_df <- read_csv("../data/geotagged_sb_tweets_post_apr_2015.csv") 
 
 num_month_tweets <- tweet_df %>%
   group_by(user_id, user_location, Year) %>%
@@ -75,7 +65,7 @@ ggplot(tourist_local) +
   geom_histogram(aes(num_unique_months_tweeted), bins = 12) +
   theme_minimal() +
   scale_x_continuous(breaks = seq(0, 12, 1), lim = c(0, 12)) +
-  facet_wrap(~user_type)
+  facet_wrap(~user_type, scales = 'free') +
   labs(x = "Number of months tweeted in a year",
        y = "Number of users",
        title = "How many unique months are SB geotag tweeters tweeting?") 
