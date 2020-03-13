@@ -10,7 +10,7 @@ output:
 ---
 
 ```{r setup, include=FALSE, message = FALSE, warning = FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = "center")
 
 library(mapview)
 library(tidyverse)
@@ -34,11 +34,12 @@ mapviewOptions(basemaps = c("CartoDB.Positron", "OpenStreetMap"))
 
 The aim of this project was to evaluate whether or not geotagged social media data can be useful in providing insight into a region's "Sense of Place" using Santa Barbara as a case study. Sense of Place can be defined as the connection people feel to their geographic surroundings, including both the natural and built environment. Locations with a strong sense of place often have a strong identity felt by both locals and visitors. 
 
-Geotagged social media data has been used in recent years to study people's interaction with the natural environment in various ways, many of which are focused on tourism:
-- Quantifying nature-based tourism (Wood et al. 2013, Kim et al. 2019, )
-- Mapping tourist footprints (Runge & Daigle 2020), flows (Chua et al. 2016), and hot spots (Garcia-Palomares et al. 2015)
-- Understand tourist preferences in nature based places such as Kruger National Park (Hausmann et al. 2017, Levin et al. 2017, Tenkanen  et al. 2017)
-- Monitor and measure environmental conditions of places (e.g. Great Barrier Reef, Becken et al. 2017)
+Geotagged social media data has been used in recent years to study people's interaction with the natural environment in various ways, many of which are focused on tourism:  
+
+- Quantifying nature-based tourism (Wood et al. 2013, Kim et al. 2019)  
+- Mapping tourist footprints (Runge & Daigle 2020), flows (Chua et al. 2016), and hot spots (Garcia-Palomares et al. 2015)  
+- Understand tourist preferences in nature based places such as Kruger National Park (Hausmann et al. 2017, Levin et al. 2017, Tenkanen  et al. 2017)  
+- Monitor and measure environmental conditions of places (e.g. Great Barrier Reef, Becken et al. 2017)  
 
 This project differs in that we wanted to map the spatial patterns of tourists and locals, and understand how these two user groups engage with and perceive the natural environment of Santa Barbara.
 
@@ -180,7 +181,7 @@ leaflet(tweet_data) %>%
 
 #### Tweet density
 
-Each hexagon shows the log10 density of tweets in that area. The highest number of tweets in a single location is around 11,000 (yellow hex). This includes the default Santa Barbara coordinate used for geotagging from the city of Santa Barbara without a precise location
+Each hexagon shows the log10 density of tweets in that area. The highest number of tweets in a single location is around 11,000 (deep purple hex). This includes the default Santa Barbara coordinate used for geotagging from the city of Santa Barbara without a precise location
 
 ```{r, echo = FALSE, fig.width = 8}
 hex_grid <- read_sf("data/sb_area_hexagons.shp")
@@ -276,8 +277,6 @@ tl_map@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 
 The full text of each tweet was analyzed to be either nature-based or not. We developed a coarse dictionary of words that indicate a nature-based tweet. These include natural features like ocean, coast, park, and works that indicate recreating (fishing, hiking, camping, etc.).
 
-**Note:** I had a hard time finding an ontology or lexicon that would fit this project. These are definitely skewed more towards nature and recreation rather than words like "home" or "connection".
-
 ```{r, echo = FALSE}
 dictionary <- read_csv("data/dictionary.csv")
 nature_df <- read_csv("data/tweets_nature_categorized.csv")
@@ -293,7 +292,7 @@ kable(sample_n(nature_df %>% filter(nature_word == 1) %>% select(date, full_text
 
 ### Proportion of tweets considered "nature-based" over time
 
-All groups show increases in proportion of tweets that are nature based over time.
+All groups show increases in proportion of tweets that are nature based over time, even as the number of geotagged tweets declines.
 
 ```{r, fig.height = 3, fig.width = 8}
 nature_prop <- nature_df %>% 
@@ -336,8 +335,6 @@ ggplot(combo, aes(x = date, y = nature_prop, color = user_type)) +
 ```
 
 ### Where are nature-based tweets?
-
-After identifying nature-based tweets we can take a look at where these tweets are coming from and compare to the general pattern of tweets. 
 
 ```{r}
 nature_sf <- nature_df %>%
@@ -421,11 +418,9 @@ ggplot(nature_df_user_type, aes(x = tweet_type, fill = tweet_type)) +
 
 ### Are tweets in protected areas more often nature-based?
 
-**California Protected Areas Database**
-
 To link tweet locations to what exists at those locations we need to use a spatial dataset that tells us what is there. This could be roads, city parcel information, or in our case we are using protected areas from the [California Protected Areas Database](https://www.calands.org/). 
 
-> The CPAD is a GIS dataset depicting lands that are owned in fee and protected for open space purposes by over 1,000 public agencies or non-profit organizations. 
+The CPAD is a GIS dataset depicting lands that are owned in fee and protected for open space purposes by over 1,000 public agencies or non-profit organizations. 
 
 ```{r, echo = FALSE}
 cpad <- read_sf("data/cpad_fixed.shp")
@@ -507,6 +502,8 @@ ggplot(top_20, aes(x = reorder(SITE_NAME, count), fill = tweet_type, y = count))
 
 #### How does this differ across tourists and locals?
 
+Here we compare the proportion of nature-based tweets from CPAD areas by both tourists and locals. Sites that are above the line have a higher proportion of nature-based tweets from tourists, those below see more from locals. The size of the point indicates the total number of tweets from those locations. There isn't a significant difference between the two user groups, indicating that these sites see a similar proportion of nature-based tweets from both groups.
+
 ```{r}
 cpad_locals <- cpad %>%
   mutate(nature_count = lengths(st_intersects(cpad, nature_tweets %>% filter(user_type == "local"))),
@@ -534,11 +531,8 @@ cpad_users <- cpad_locals %>%
   rbind(cpad_tourists)
 ```
 
-Looking at the breakdown between tourists and locals. 
-
 ```{r, message = FALSE, warning= FALSE}
 
-## THE FOLLOWING 
 pyramid_df <- cpad_users %>%
   st_set_geometry(NULL) %>%
   #mutate(prop_non_nature = 1-prop) %>%
@@ -585,12 +579,15 @@ ggplot(scatter_df, aes(x = local, y = tourist, label = label)) +
   theme_classic() +
   theme(legend.position = "none") +
   geom_text_repel(size = 2.8, min.segment.length = 0.5, point.padding = 0.3, segment.alpha =0.4) +
-  labs(x = "Locals", y = "Tourists", title = "Proportion of nature-based tweets by locals and tourists \nat Santa Barbara protected areas. Size indicates total number of tweets") +
+  labs(x = "Locals", y = "Tourists", title = "Proportion of nature-based tweets by locals & tourists at Santa Barbara protected areas.",
+  subtitle = "Size indicates total number of tweets") +
   expand_limits(x = c(0,1.05), y = c(0,1.05))
 ```
 
 
 ### Do tourists and locals visit the same or different nature sites?
+
+Going a bit further, we also looked at number of unique visitors to these CPAD sites. By calculating the proportion of unique tourists and locals that visit these sites, we start to look at who goes where. *This is not limiting tweets to only those that are nature-based.*
 
 At the lower end we see more locals than tourists visiting these sites. These tend to be less popular areas. On the upper end, we see sites that are more frequented overall, and more frequented by tourists. These include well-known areas like the Santa Barbara Harbor and Stearn's Wharf. Those on the lower end that locals frequent more are either lesser-known (Shoreline Park, Alameda Park are both neighborhood parks), or further from main tourist areas (e.g. Goleta Beach)
 
@@ -634,11 +631,34 @@ p1 <- ggplot(twt_df, aes(x = local, y = tourist)) +
     arrow = arrow(length = unit(0.01, "npc"), type = "closed"),
     inherit.aes = FALSE) +
   labs(x = "Locals", y = "Tourists", title = "Proportion of <b style='color:#FF0000'>locals</b> & <b style='color:#0000FF'>tourists</b> visiting protected areas") +
-  annotate("rect", fill = "gray80", alpha = 0.5, 
+  ggplot2::annotate("rect", fill = "gray80", alpha = 0.5, 
         xmin = -Inf, xmax = 0.03,
         ymin = -Inf, ymax = 0.03) +
   theme(plot.title = element_markdown(lineheight = 1.1, size = 11.3),
-        legend.position = "none")
+        legend.position = "none") +
+   geom_label(
+    data = data.frame(x = 0.015,
+                      y = 0.12,
+                      label = c("10.6% of all tourists \nvisit Stearn's Wharf but \njust 5.2% of locals visit")),
+    aes(x = x, y = y, label = label), 
+    hjust = 0, 
+    lineheight = .8, 
+    size = 2.5,
+    inherit.aes = FALSE, 
+    label.size = 0,
+    color = "gray30"
+  ) +
+  geom_curve(
+    data = data.frame(x = 0.031,
+                      y = 0.113, 
+                      xend = 0.051,
+                      yend = 0.107),
+    mapping = aes(x = x, y = y, xend = xend, yend = yend),
+    colour = "black",
+    size = 0.5,
+    curvature = 0.05,
+    arrow = arrow(length = unit(0.01, "npc"), type = "closed"),
+    inherit.aes = FALSE)
 
 ```
 
@@ -665,7 +685,7 @@ p1+p2 + plot_layout(ncol=2)
 ```
 
 
-We only have `r length(unique(tweets_in_cpad$user_id))` unique users from within CPAD areas. This is `r round(length(unique(tweets_in_cpad$user_id))/length(unique(tweet_data$user_id))*100,0)`% of all unique users in the dataset.
+We have `r length(unique(tweets_in_cpad$user_id))` unique users from within CPAD areas, representing `r round(length(unique(tweets_in_cpad$user_id))/length(unique(tweet_data$user_id))*100,0)`% of all unique users in the dataset.
 
 
 ----
@@ -850,9 +870,9 @@ p1 + p2 + plot_layout(ncol=1)
 Applying the same or similar method to other regions of different geographic and population sizes could reveal more interesting information and provide context for the patterns and trends we see in Santa Barbara.
 
 Is Santa Barbara unique in that:  
-- tourists and locals have similar spatial patterns
-- 24% of all geo-tagged tweets are nature-based
-- Proportion of nature-based tweets is increasing as geotagged tweets decrease overall, and positive sentiment is increasing over time
+- tourists and locals have similar spatial patterns  
+- 24% of all geo-tagged tweets are nature-based  
+- Proportion of nature-based tweets is increasing as geotagged tweets decrease overall, and positive sentiment is increasing over time  
 
 We might expect the tourist/local alignment to differentiate when looking at highly urban areas (LA, San Francisco), show more alignment in other suburban areas (e.g. Santa Cruz), and maybe not exist in rural locations.
 
@@ -871,8 +891,8 @@ The dictionary compiled for this project was based solely on my own perspective 
 **Spatial data for natural areas**  
 The CPAD dataset is good but not perfect. Some place names needed to be edited and some polygons needed to be fixed. This would not have been possible without extensive local knowledge of Santa Barbara. To scale this analysis to larger areas, you would want to ensure the underlying "natural area" dataset is appropriate.
 
-**Bias in data**
-There is inherent bias in using social media data to draw broader conclusions about a community. Not everyone has access to social media or uses social media in a similar manner. There are differences across all demographics (genders, ages, ethinicities, economic status) and these were not taken into consideration during this project but should be considered if this is to be expanded upon.
+**Bias in data**  
+There is inherent bias in using social media data to draw broader conclusions about a community. Not everyone has access to social media or uses social media in a similar manner. There are differences across all demographics (genders, ages, ethinicities, economic status) and these were not taken into consideration during this project but should be considered if this is to be expanded upon. There are also differences in who decides to make their account public and explicilty chooses to geotag their tweet (Sloan & Morgan 2015).
 
 ----
 
