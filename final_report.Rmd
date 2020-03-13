@@ -32,7 +32,7 @@ mapviewOptions(basemaps = c("CartoDB.Positron", "OpenStreetMap"))
 
 # Project Summary
 
-The aim of this project was to evaluate whether or not geotagged social media data can be useful in providing insight into a region's "Sense of Place" using Santa Barbara as a case study. Sense of Place can be defined as the connection people feel to their geographic surroundings, including both the natural and built environment. Locations with a strong sense of place often have a strong identity felt by both locals and visitors. 
+**The aim of this project was to evaluate whether or not geotagged social media data can be useful in providing insight into a region's "Sense of Place" using Santa Barbara as a case study.** Sense of Place can be defined as the connection people feel to their geographic surroundings, including both the natural and built environment. Locations with a strong sense of place often have a strong identity felt by both locals and visitors. 
 
 Geotagged social media data has been used in recent years to study people's interaction with the natural environment in various ways, many of which are focused on tourism:  
 
@@ -43,18 +43,6 @@ Geotagged social media data has been used in recent years to study people's inte
 
 This project differs in that we wanted to map the spatial patterns of tourists and locals, and understand how these two user groups engage with and perceive the natural environment of Santa Barbara.
 
-## Findings
-
-- While the number of geotagged tweets has been decreasing overtime, the proportion of nature-based tweets has increased over time  
-- Locals and tourists have similar spatial patterns with a higher proportion of tourists visiting more accessible, well-known areas, and a higher proportion of locals at locations further from the downtown Santa Barbara area.  
-- Sentiment analysis reveal increasing positive sentiment over time for both nature based and non-nature based tweets.  
-
-## Takeaways
-
-- There are opportunities to expand on these findings if compared to other locations of various sizes, but we are not pursuing a larger project at this time   
-- Social media data is very difficult to access for academic research and recent restrictions limit the potential to scale this analysis up   
-- Project findings will be published in a blog post and shared broadly via social media  
-
 ## Methods summary
 
 - Roughly **65,000** geotagged tweets were queried from April 30, 2015 to December 31, 2019.   
@@ -63,6 +51,20 @@ This project differs in that we wanted to map the spatial patterns of tourists a
 - Nature-based tweets were identified using text detection by comparing tweet content to a compiled dictionary of nature-based words  
 - The California Protected Areas Database (CPAD) was used to identify areas of importance for their natural environment, and overlaid with twitter data to reveal patterns about who visits these areas and content of tweets from these locations  
 - Sentiment and text analysis were applied to tweet text to calculate positive/negative sentiment over time and identify important words for nature-based tweets  
+
+
+## Findings
+
+- Locals and tourists have similar spatial patterns with a higher proportion of tourists visiting more accessible, well-known areas, and a higher proportion of locals at locations further from the downtown Santa Barbara area.  
+- While the number of geotagged tweets has been decreasing overtime, the proportion of nature-based tweets has increased over time  
+- Sentiment analysis reveal increasing positive sentiment over time for both nature based and non-nature based tweets.  
+
+## Takeaways
+
+- There are opportunities to expand on these findings if compared to other locations of various sizes, but we are not pursuing a larger project at this time   
+- Social media data is very difficult to access for academic research and recent restrictions limit the potential to scale this analysis up   
+- Project findings will be published in a blog post and shared broadly via social media  
+
 
 -----
 
