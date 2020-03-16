@@ -338,6 +338,67 @@ ggplot(scatter_df, aes(x = local, y = tourist)) +
 
 ```
 
+## Do tourists and locals visit the same or different nature sites?
+
+At the lower end we see more locals than tourists visiting these sites. These tend to be less popular areas. On the upper end, we see sites that are more frequented overall, and more frequented by tourists. These include well-known areas like the Santa Barbara Harbor and Stearn's Wharf. Those on the lower end that locals frequent more are either lesser-known (Shoreline Park, Alameda Park are both neighborhood parks), or further from main tourist areas (e.g. Goleta Beach)
+
+```{r}
+tweets_in_cpad <- read_sf("../data/tweets_in_cpad_areas.shp")
+
+twt_df <- tweets_in_cpad %>%
+  select(user_id, usr_typ, SITE_NA) %>%
+  st_set_geometry(NULL) %>%
+  distinct() %>%
+  group_by(SITE_NA, usr_typ) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  group_by(usr_typ) %>%
+  mutate(total_users = sum(count)) %>%
+  ungroup() %>%
+  mutate(prop = count/total_users) %>%
+  select(-total_users, -count) %>%
+  pivot_wider(names_from = usr_typ, values_from = prop) %>%
+  mutate(local = ifelse(is.na(local), 0, local),
+         tourist = ifelse(is.na(tourist), 0, tourist),
+    label = ifelse(
+      SITE_NA %in% c("Arroyo Burro Beach County Park", "Santa Barbara Harbor", "Stearns Wharf", "Los Padres National Forest", "Carpinteria State Beach", "Santa Barbara Bowl", "Santa Barbara Maritime Museum", "Manning Park", "Santa Barbara Zoological Gardens", "Chase Palm Park"), as.character(SITE_NA), ""),
+    fill = ifelse(label == "", "fill", "empty"))
+  
+ggplot(twt_df, aes(x = local, y = tourist)) +
+  geom_point(aes(color = fill), size = 2) +
+  scale_color_manual(values = c("black", "gray80")) +
+  geom_abline(color = "gray") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  geom_text_repel(aes(label = label), size = 2.75) +
+  labs(x = "Locals", y = "Tourists", title = "Proportion of users visiting Santa Barbara protected areas")
+
+```
+
+Zoom in on lower end
+
+```{r}
+
+lower_end <- twt_df %>% 
+  filter(local < 0.04 & tourist < 0.04) %>%
+  mutate(local = ifelse(is.na(local), 0, local),
+         tourist = ifelse(is.na(tourist), 0, tourist),
+    label = ifelse(
+      SITE_NA %in% c("Cachuma Lake Recreation Area", "Leadbetter Beach", "Goleta Beach County Park", "Shoreline Park", "Coal Oil Point Reserve", "Alameda Park", "Douglas Family Reserve", "El Presidio de Santa Barbara State Historic Park"), as.character(SITE_NA), ""),
+    fill = ifelse(label == "", "fill", "empty"))
+
+ggplot(lower_end, aes(x = local, y = tourist)) +
+  geom_point(aes(color = fill), size = 2) +
+  scale_color_manual(values = c("black", "gray80")) + 
+  geom_abline(color = "gray") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  geom_text_repel(aes(label = label), size = 2.75) +
+  labs(x = "Locals", y = "Tourists", title = "Proportion of users visiting Santa Barbara protected areas")
+```
+
+
+We only have 5,484 unique users from with CPAD areas. This is X% of all unique users in SB.
 
 ## What sites have no nature-based tweets?
 
@@ -383,6 +444,32 @@ hex_tweet_counts <- hex_grid %>%
 ```{r}
 m <- mapview(hex_tweet_counts, zcol = "prop") +
   mapview(cpad, zcol = "SITE_NAME", legend = FALSE) 
+
+m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
+```
+
+
+### Percentage of tweets that are nature-based across Santa Barbara
+
+```{r, fig.width = 9}
+
+hex_grid <- read_sf("../data/sb_area_hexagons.shp")
+
+
+#overlap the hex grids with tweets
+hex_tweet_counts_nature <- hex_grid %>%
+  mutate(nature_twts = lengths(st_intersects(hex_grid, nature_df %>% filter(nature_word == 1))),
+         non_nature_twts = lengths(st_intersects(hex_grid, nature_df %>% filter(nature_word == 0))),
+         total = lengths(st_intersects(hex_grid, nature_df))) %>%
+  rowwise() %>%
+  mutate(prop = round(nature_twts/total*100),2) %>%
+  filter(total > 0) %>% 
+  st_set_geometry("geometry")
+
+
+m <- mapview(hex_tweet_counts_nature, zcol = "prop", 
+             col.regions = colorRampPalette(brewer.pal(9, "Greens")[5:9]), alpha = 0.9,
+             layer.name = "Percentage (%)")
 
 m@map %>% setView(lng = -119.714, lat = 34.426, zoom = 13)
 ```

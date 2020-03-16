@@ -144,6 +144,7 @@ ggplot(sb_tfidf_top) +
   theme_classic() +
   labs(x = "", y = "TF_IDF")
 
+ggsave("../figs/sb_nature_tweets_top_words.png")
 ```
 
 We can look at this across tourists/locals (for nature-based tweets)
@@ -166,11 +167,14 @@ ggplot(user_tfidf_top) +
   labs(x = "", y = "TF_IDF") +
   facet_wrap(~user_type, scales = "free") +
   theme(legend.position = "none")
+
+
+ggsave("../figs/tourist-local_nature_tweets_top_words.png")
 ```
 
 We can also look at it across each CPAD area. This looks at all tweets from those areas.
 
-```{r}
+```{r, fig.width = 10, fig.height = 6}
 tweets_cpad <- read_sf("../data/tweets_in_cpad_areas.shp") %>%
   st_set_geometry(NULL) %>%
   select(fll_txt, usr_typ, ntr_wrd, SITE_NA) %>%
@@ -195,6 +199,9 @@ ggplot(sites_tfidf %>% filter(SITE_NA %in% sites)) +
   labs(x = "", y = "TF_IDF") +
   facet_wrap(~SITE_NA, scales = "free") +
   theme(legend.position = "none")
+
+
+ggsave("../figs/cpad_tweets_top_words.png")
 ```
 
 Just look at all nature tweets across CPAD areas

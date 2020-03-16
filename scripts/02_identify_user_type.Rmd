@@ -11,7 +11,7 @@ output:
 
 # Summary
 
-This script takes the geotagged tweets and assigns each unique user a **user type**, either as a *local* or a *tourist*. If the user has self-identified their location as somewhere in the Santa Barbara area, they are designated a *local*. This includes Carpinteria, Santa Barbara, Montecito, Goleta, Gaviota and UCSB. For the remainder, we use the number of times they have tweeted from Santa Barbara within a year to designate user type. If someone has tweeted across more than 2 months in the same year from Santa Barbara, they are identified as a local. This is consistent with how [Eric Fischer](https://www.citylab.com/transportation/2015/02/where-do-locals-go-in-major-cities-check-out-this-interactive-world-map/385768/) determined tourists in his work. This is not fool-proof and there are instances were people visit and tweet from Santa Barbara more than two months a year, especially if they are visiting family or live within a couple hours driving distance.
+This script takes the geotagged tweets and assigns each unique user a **user type**, either as a *local* or a *tourist*. If the user has self-identified their location as somewhere in the Santa Barbara area, they are designated a *local*. This includes Carpinteria, Santa Barbara, Montecito, Goleta, Gaviota and UCSB. For the remainder, we use the number of times they have tweeted from Santa Barbara within a year to designate user type. If someone has tweeted across **more than 2 months** in the same year from Santa Barbara, they are identified as a local. This is consistent with how [Eric Fischer](https://www.citylab.com/transportation/2015/02/where-do-locals-go-in-major-cities-check-out-this-interactive-world-map/385768/) determined tourists in his work. This is not fool-proof and there are instances were people visit and tweet from Santa Barbara more than two months a year, especially if they are visiting family or live within a couple hours driving distance.
 
 ## Setup
 
@@ -25,6 +25,10 @@ library(ggmap)
 library(viridis)
 library(sf)
 library(mapview)
+#remotes::install_github("wilkelab/ggtext")
+library(ggtext)
+
+register_google(Sys.getenv("GOOGLE_ACCESS_TOKEN"))
 ```
 
 ## Identify tourists
@@ -61,6 +65,7 @@ tourist_local <- num_month_tweets %>%
     str_detect(tolower(user_location), paste(c("santa barbara", "carpinteria", "isla vista", "goleta", "montecito", "805", "gaviota", "ucsb"), collapse = '|')) ~ "local",
      TRUE ~ "unknown"))
 
+
 ggplot(tourist_local) +
   geom_histogram(aes(num_unique_months_tweeted), bins = 12) +
   theme_minimal() +
@@ -69,6 +74,9 @@ ggplot(tourist_local) +
   labs(x = "Number of months tweeted in a year",
        y = "Number of users",
        title = "How many unique months are SB geotag tweeters tweeting?") 
+
+ggsave("../figs/user_threshold.png")
+
 ```
 
 Based on this lets stick with the 3 month threshold.
@@ -120,9 +128,34 @@ Turn the `tweet_df_w_user_type` data frame into a spatial object.
 
 ```{r}
 tweet_df_w_user_type_sf <- tweet_df_w_user_type %>%
-  st_as_sf(coords = c("lon", "lat")) %>%
+  st_as_sf(coords = c("lon", "lat"), remove = F) %>%
   st_set_crs(4326)
 ```
+
+## Static map
+
+```{r}
+static_df <- tweet_df_w_user_type_sf %>%
+  select(user_type, geometry, lat, lon) 
+#santa barbara
+sb.map <- get_map("santa barbara, california", zoom = 14, maptype = "toner-lite") 
+
+ggmap(sb.map,  legend="none") +
+  coord_equal() +
+    labs(x = NULL, y = NULL) +
+    theme(axis.text = element_blank()) +
+    geom_point(data = static_df, aes(x = lon, y = lat, color = user_type),
+               size = 0.5, alpha = 0.3) + 
+    scale_color_manual(values = c("red", "blue")) +
+  labs(fill = "User type",
+       title = "Santa Barbara tweets from <b style='color:#FF0000'>locals</b> and <b style='color:#0000FF'>tourists</b>",
+       subtitle = "2015 - 2019") +
+  theme(plot.title = element_markdown(lineheight = 1.1),
+        plot.subtitle = element_markdown(lineheight = 1.1),
+        legend.position = "none")
+
+```
+
 
 ## Hex density maps
 
