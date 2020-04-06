@@ -75,9 +75,9 @@ Top 100 words for all Santa Barbara tweets
 
 ```{r}
 
-png("../figs/wordcloud_top_100_all_sb.png")
-
-wordcloud(words = all_sb_words$word, freq = all_sb_words$n, min.freq = 1,           
+png("../figs/wordcloud_top_100_all_sb.png", width=12,height=8, units='in', res=300)
+par(mar = rep(0, 4))
+wordcloud(words = all_sb_words$word, freq = all_sb_words$n, min.freq = 1,         
           max.words=100, random.order=FALSE, rot.per=0.35,            
           colors=brewer.pal(8, "Dark2"))
 ```

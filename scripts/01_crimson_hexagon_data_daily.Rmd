@@ -225,9 +225,27 @@ map <- leaflet(tweet_data) %>%
   # Overlay groups %>%
     addCircleMarkers(data = tweet_data, lng = ~lon, lat = ~lat, popup = ~full_text,
                    radius = 3, stroke = FALSE, fillOpacity = 0.5, clusterOptions = markerClusterOptions())  
-mapshot(map, "../figs/all_tweet_map_cluster_markers.html")
-
 map
+```
+
+### Static tweet map
+
+```{r, fig.width = 6, fig.height = 6}
+register_google(Sys.getenv("GOOGLE_ACCESS_TOKEN"))
+
+#santa barbara
+sb.map <- get_map("santa barbara, california", zoom = 14, maptype = "toner-lite") 
+
+ggmap(sb.map,  legend="none") +
+  coord_equal() +
+    labs(x = NULL, y = NULL) +
+    theme(axis.text = element_blank()) +
+    geom_point(data = tweet_data, aes(x = lon, y = lat),
+               size = 0.55, alpha = 0.2, color = "darkorchid4") + 
+  labs(fill = "User type",
+       title = "Tweets in downtown Santa Barbara")
+
+ggsave("../figs/all_tweets_sb_downtown.png")
 ```
 
 
@@ -235,10 +253,6 @@ map
 
 ```{r}
 cols      = c(brewer.pal(9,"OrRd")[2:9])
-register_google(Sys.getenv("GOOGLE_ACCESS_TOKEN"))
-
-#santa barbara
-sb.map <- get_map("santa barbara, california", zoom = 14, maptype = "toner-lite") 
 
 ggmap(sb.map,  legend="none") +
   coord_equal() +
@@ -313,7 +327,8 @@ sb_county <- read_sf("../data/CA_Counties_TIGER2016.shp") %>%
 Get hex density by overlaying with points
 
 ```{r}
-hex_grid <- read_sf("../data/sb_area_hexagons.shp")
+hex_grid <- read_sf("../data/sb_area_hexagons.shp") %>%
+  st_transform(st_crs(tweet_sf))
 
 hex_tweet_count <- hex_grid %>%
   mutate(tweet_count = lengths(st_intersects(hex_grid, tweet_sf)))
@@ -390,8 +405,6 @@ hex_tweet_count <- hex_grid %>%
 
 log_hex_map <-mapview(hex_tweet_count %>% filter(tweet_count > 0), #remove hexes with no tweets
                  zcol = "log_tweet_count", layer.name = "Tweet count (log)")
-
-mapshot(log_hex_map, "../figs/sb_tweets_log_hex_map.html")
 
 log_hex_map
 ```

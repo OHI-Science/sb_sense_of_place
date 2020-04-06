@@ -164,7 +164,8 @@ ggmap(sb.map,  legend="none") +
 Get hex density by overlaying with points
 
 ```{r}
-hex_grid <- read_sf("../data/sb_area_hexagons.shp")
+hex_grid <- read_sf("../data/sb_area_hexagons.shp") %>%
+  st_transform(st_crs(tweet_df_w_user_type_sf))
 locals <- tweet_df_w_user_type_sf %>% filter(user_type == "local")
 tourists <- tweet_df_w_user_type_sf %>% filter(user_type == "tourist")
 

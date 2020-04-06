@@ -73,4 +73,7 @@ all_tweets_bing_score.csv
 #folders
 CPAD_2019a/
 
+#final report kept off repo
+*final_report.html
+*final_report.Rmd
 
