@@ -51,7 +51,26 @@ rsconnect/
 #annoying files
 *.DS_Store
 *._*
-
+*.zip
+*_TIGER2016.dbf
+*_TIGER2016.prj
+*_TIGER2016.sbn
+*_TIGER2016.shp
+*_TIGER2016.shx
+*_in_cpad_areas.dbf
+*_in_cpad_areas.prj
+*_in_cpad_areas.shp
+*_in_cpad_areas.shx
 sb_area_hexag*
+
+#twitter files
+geotag_sb_tweets_user_type.csv
+geotagged_sb_tweets.csv
+geotagged_sb_tweets_post_apr_2015.csv
+tweets_nature_categorized.csv
+all_tweets_bing_score.csv
+
+#folders
+CPAD_2019a/
 
 
